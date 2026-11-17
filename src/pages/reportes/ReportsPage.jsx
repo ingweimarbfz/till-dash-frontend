@@ -9,31 +9,8 @@ import { Tabs } from '../../components/forms'
 import { Bars, Ranking, Share } from '../../components/charts'
 import { formatDate, formatDateTime, formatMoney, minutesLabel } from '../../utils/format'
 
-// ---------- Fechas (días de Colombia) ----------
-const bogota = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(d)
-const shift = (day, n) => bogota(new Date(new Date(`${day}T12:00:00-05:00`).getTime() + n * 864e5))
-const PRESETS = () => {
-  const t = bogota()
-  const [y, m] = t.split('-').map(Number)
-  const first = `${y}-${String(m).padStart(2, '0')}-01`
-  const prevFirst = m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, '0')}-01`
-  return {
-    hoy: ['Hoy', t, t], ayer: ['Ayer', shift(t, -1), shift(t, -1)], d7: ['7 días', shift(t, -6), t], d30: ['30 días', shift(t, -29), t],
-    mes: ['Este mes', first, t], mesAnt: ['Mes pasado', prevFirst, shift(first, -1)]
-  }
-}
-const dayLabel = (d, many) => { const x = new Date(`${d}T12:00:00-05:00`); return many ? String(x.getUTCDate()) : x.toLocaleDateString('es-CO', { weekday: 'short', day: 'numeric', timeZone: 'America/Bogota' }) }
+import { bogota, PRESETS, dayLabel, download } from '../../utils/range'
 
-// ---------- Exportar a Excel (CSV con ; y BOM para que Excel en español lo abra bien) ----------
-const toCsv = (cols, rows) => {
-  const cell = (v) => { const s = v === null || v === undefined ? '' : String(v); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
-  return '﻿' + [cols.map((c) => cell(c[0])).join(';'), ...rows.map((r) => cols.map((c) => cell(typeof c[1] === 'function' ? c[1](r) : r[c[1]])).join(';'))].join('\r\n')
-}
-const download = (name, cols, rows) => {
-  const url = URL.createObjectURL(new Blob([toCsv(cols, rows)], { type: 'text/csv;charset=utf-8' }))
-  const a = document.createElement('a'); a.href = url; a.download = `${name}.csv`; a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
 const ExportBtn = ({ onClick }) => <button type="button" className="btn btn-sm" onClick={onClick}><MdDownload /> Excel</button>
 const pct = (v) => (v === null || v === undefined ? '—' : `${String(v).replace('.', ',')} %`)
 

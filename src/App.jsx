@@ -21,6 +21,7 @@ const PromotionsPage = lazy(() => import('./pages/inventario/PromotionsPage'))
 const NotificationsPage = lazy(() => import('./pages/notificaciones/NotificationsPage'))
 const TablesPage = lazy(() => import('./pages/operacion/TablesPage'))
 const ReportsPage = lazy(() => import('./pages/reportes/ReportsPage'))
+const FinancePage = lazy(() => import('./pages/finanzas/FinancePage'))
 const IncidentsPage = lazy(() => import('./pages/operacion/IncidentsPage'))
 const TablesConfigPage = lazy(() => import('./pages/operacion/TablesConfigPage'))
 const OrdersPage = lazy(() => import('./pages/operacion/OrdersPage'))
@@ -72,6 +73,7 @@ const App = () => (
               <Route path="comandas" element={<Protected roles={STAFF}><KitchenPage /></Protected>} />
               <Route path="caja" element={<Protected roles={STAFF}><CashPage /></Protected>} />
               <Route path="reportes" element={<Protected roles={ADMIN}><ReportsPage /></Protected>} />
+              <Route path="finanzas" element={<Protected roles={ADMIN}><FinancePage /></Protected>} />
               <Route path="incidentes" element={<Protected roles={STAFF}><IncidentsPage /></Protected>} />
               <Route path="cuentas-por-cobrar" element={<Protected roles={STAFF}><ReceivablesPage /></Protected>} />
               <Route path="productos" element={<Protected roles={STAFF}><ProductsPage /></Protected>} />

@@ -12,21 +12,34 @@ import { ADMIN, since } from '../operacion/common'
 
 // ---------- Abrir turno ----------
 const OpenModal = ({ register, admin, onClose, onDone }) => {
-  const [amount, setAmount] = useState(register.floatAmount > 0 ? register.floatAmount : '')
-  const [fromVault, setFromVault] = useState(false)
+  const carry = register.floatAmount || 0
+  const fund = register.siteFund || 0
+  const [amount, setAmount] = useState(carry > 0 ? carry : '')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const base = Number(amount) || 0
+  const fromFund = Math.max(0, base - carry)
+  const short = fromFund > fund
   const submit = async (e) => {
     e.preventDefault(); setError(''); setSaving(true)
-    try { const { data } = await api.post('/caja/turnos', { registerId: register.id, openingAmount: Number(amount) || 0, fromVault, note }); onDone(data) } catch (err) { setError(errorMessage(err)); setSaving(false) }
+    try { const { data } = await api.post('/caja/turnos', { registerId: register.id, openingAmount: base, note }); onDone(data) } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
+  const noMoney = carry + fund <= 0
   return (
     <Modal title={`Abrir turno · ${register.name}`} onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="open-cash" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLockOpen />} Abrir turno</button></>}>
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="open-cash" className="btn btn-primary" disabled={saving || !base || short}>{saving ? <Spinner /> : <MdLockOpen />} Abrir turno</button></>}>
       <form id="open-cash" className="form-grid" onSubmit={submit} noValidate>
-        <div className="span-2"><Field label="Base en efectivo" htmlFor="ob" hint={register.floatAmount > 0 ? `En el cierre anterior quedaron ${formatMoney(register.floatAmount)} guardados en esta caja` : 'El dinero con el que arranca la caja para dar cambio'}><MoneyInput id="ob" value={amount} onChange={setAmount} autoFocus /></Field></div>
-        {admin && <label className="check span-2"><input type="checkbox" checked={fromVault} onChange={(e) => setFromVault(e.target.checked)} /> La base sale de la bóveda de la sucursal</label>}
+        <div className="span-2 cash-cover">
+          <div><span>Quedó en esta caja</span><strong className="money">{formatMoney(carry)}</strong></div>
+          <div><span>Fondo de {register.site || 'la sucursal'}</span><strong className="money">{formatMoney(fund)}</strong></div>
+          <div><span>Disponible para la base</span><strong className="money">{formatMoney(carry + fund)}</strong></div>
+        </div>
+        {noMoney ? (
+          <div className="alert warn span-2">La sucursal no tiene fondos para la base. {admin ? <Link to="/finanzas?tab=fondos">Ingresa dinero a la sucursal en Finanzas</Link> : 'Pide al administrador que ingrese dinero al fondo de la sucursal.'}</div>
+        ) : (
+          <div className="span-2"><Field label="Base en efectivo" htmlFor="ob" hint={short ? `Faltan ${formatMoney(fromFund - fund)} en el fondo de la sucursal` : fromFund > 0 ? `${formatMoney(fromFund)} salen del fondo de la sucursal` : base && base < carry ? `${formatMoney(carry - base)} vuelven al fondo de la sucursal` : 'El dinero con el que arranca la caja para dar cambio'}><MoneyInput id="ob" value={amount} onChange={setAmount} autoFocus /></Field></div>
+        )}
         <div className="span-2"><Field label="Nota" htmlFor="on"><input id="on" value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
@@ -239,7 +252,7 @@ const VaultTab = () => {
         <Kpi label={`Bóveda ${v.site}`} value={formatMoney(v.balance)} icon={MdAccountBalance} tone="brand" />
         {v.bySite.length > 1 && <Kpi label="Todas las bóvedas" value={formatMoney(v.total)} note={v.bySite.map((x) => `${x.site}: ${formatMoney(x.balance)}`).join(' · ')} />}
       </div>
-      <Card title="Movimientos de la bóveda" subtitle="Elige otra sucursal arriba para ver su bóveda" flush actions={<button type="button" className="btn btn-sm btn-primary" onClick={() => setModal(true)}><MdEdit /> Registrar</button>}>
+      <Card title="Movimientos de la bóveda" subtitle="La bóveda es el fondo de la sucursal: de aquí sale la base para abrir sus cajas" flush actions={<div className="card-actions"><Link to="/finanzas?tab=fondos" className="btn btn-sm">Ingresar dinero</Link><button type="button" className="btn btn-sm btn-primary" onClick={() => setModal(true)}><MdEdit /> Registrar</button></div>}>
         {!v.movements.length ? <Empty icon={<MdAccountBalance />}>La bóveda recibe el efectivo al cerrar cada turno de caja.</Empty> : (
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Fecha</th><th>Tipo</th><th className="hide-sm">Detalle</th><th className="num">Valor</th><th className="num hide-sm">Saldo</th></tr></thead>
