@@ -12,7 +12,7 @@ import { ADMIN, since } from '../operacion/common'
 
 // ---------- Abrir turno ----------
 const OpenModal = ({ register, admin, onClose, onDone }) => {
-  const [amount, setAmount] = useState('')
+  const [amount, setAmount] = useState(register.floatAmount > 0 ? register.floatAmount : '')
   const [fromVault, setFromVault] = useState(false)
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
@@ -25,7 +25,7 @@ const OpenModal = ({ register, admin, onClose, onDone }) => {
     <Modal title={`Abrir turno · ${register.name}`} onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="open-cash" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLockOpen />} Abrir turno</button></>}>
       <form id="open-cash" className="form-grid" onSubmit={submit} noValidate>
-        <div className="span-2"><Field label="Base en efectivo" htmlFor="ob" hint="El dinero con el que arranca la caja para dar cambio"><MoneyInput id="ob" value={amount} onChange={setAmount} autoFocus /></Field></div>
+        <div className="span-2"><Field label="Base en efectivo" htmlFor="ob" hint={register.floatAmount > 0 ? `En el cierre anterior quedaron ${formatMoney(register.floatAmount)} guardados en esta caja` : 'El dinero con el que arranca la caja para dar cambio'}><MoneyInput id="ob" value={amount} onChange={setAmount} autoFocus /></Field></div>
         {admin && <label className="check span-2"><input type="checkbox" checked={fromVault} onChange={(e) => setFromVault(e.target.checked)} /> La base sale de la bóveda de la sucursal</label>}
         <div className="span-2"><Field label="Nota" htmlFor="on"><input id="on" value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
         {error && <div className="alert bad span-2">{error}</div>}
@@ -64,36 +64,96 @@ const MoveModal = ({ session, onClose, onDone }) => {
 // ---------- Cierre con arqueo ----------
 const CloseModal = ({ session, summary, onClose, onDone }) => {
   const [counted, setCounted] = useState('')
-  const [toVault, setToVault] = useState('')
+  const [nextFloat, setNextFloat] = useState(session.openingAmount || '')
   const [note, setNote] = useState('')
+  const [staff, setStaff] = useState(null)
+  const [tips, setTips] = useState({})
+  const [showAll, setShowAll] = useState(false)
   const [force, setForce] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const diff = counted === '' ? null : Number(counted) - summary.expectedCash
+  useEffect(() => {
+    api.get(`/caja/turnos/${session.id}/propinas`, { params: { sede: undefined } }).then(({ data }) => {
+      setStaff(data)
+      setTips(Object.fromEntries(data.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested])))
+    }).catch(() => setStaff({ total: 0, employees: [] }))
+  }, [session.id])
+  const tipTotal = Object.values(tips).reduce((a, v) => a + (Number(v) || 0), 0)
+  const cnt = counted === '' ? null : Number(counted)
+  const diff = cnt === null ? null : cnt - summary.expectedCash
+  const toVault = cnt === null ? null : cnt - tipTotal - (Number(nextFloat) || 0)
+  const picked = Object.keys(tips).map(Number)
+  const shown = staff ? staff.employees.filter((x) => showAll || x.served || picked.includes(x.id)) : []
+  const toggle = (id) => setTips((t) => { const n = { ...t }; if (id in n) delete n[id]; else n[id] = ''; return n })
+  const split = () => {
+    const ids = picked.length ? picked : staff.employees.filter((x) => x.served).map((x) => x.id)
+    if (!ids.length) return
+    const each = Math.floor(summary.tips / ids.length)
+    setTips(Object.fromEntries(ids.map((id, i) => [id, i === 0 ? summary.tips - each * (ids.length - 1) : each])))
+  }
   const submit = async (e) => {
     e.preventDefault(); setError('')
-    if (counted === '') return setError('Cuenta el efectivo y escribe el total.')
+    if (cnt === null) return setError('Cuenta el efectivo y escribe el total.')
+    if (toVault < 0) return setError('El efectivo contado no alcanza para las propinas y la base. Ajusta los valores.')
     setSaving(true)
-    try { const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: Number(counted), toVault: Number(toVault) || 0, note, force }); onDone(data) } catch (err) {
+    try {
+      const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, tips: Object.entries(tips).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), note, force })
+      onDone(data)
+    } catch (err) {
       const msg = errorMessage(err); setError(msg); setSaving(false)
       if (/pedidos? abiertos?/.test(msg)) setForce(true)
     }
   }
   return (
-    <Modal title={`Cerrar turno ${session.number}`} onClose={onClose}
+    <Modal size="xl" title={`Cerrar turno ${session.number} · ${session.register}`} onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="close-cash" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLock />} {force ? 'Cerrar igualmente' : 'Cerrar turno'}</button></>}>
-      <form id="close-cash" className="form-grid" onSubmit={submit} noValidate>
-        <dl className="order-totals span-2" style={{ margin: 0 }}>
-          <div><dt>Base</dt><dd>{formatMoney(session.openingAmount)}</dd></div>
-          <div><dt>Ventas y abonos en efectivo</dt><dd>{formatMoney(summary.byMethod.find((m) => m.method === 'efectivo')?.amount || 0)}</dd></div>
-          <div><dt>Ingresos − egresos</dt><dd>{formatMoney(summary.income - summary.expenses)}</dd></div>
-          <div className="total"><dt>Efectivo esperado</dt><dd>{formatMoney(summary.expectedCash)}</dd></div>
-        </dl>
-        <Field label="Efectivo contado" htmlFor="cc" required><MoneyInput id="cc" value={counted} onChange={(v) => { setCounted(v); setToVault((t) => (t === '' ? Math.max(0, Number(v) - session.openingAmount) : t)) }} autoFocus /></Field>
-        <Field label="Pasa a la bóveda" htmlFor="cv" hint="Lo que no queda como base para el próximo turno"><MoneyInput id="cv" value={toVault} onChange={setToVault} /></Field>
-        {diff !== null && <div className={`alert ${diff === 0 ? 'ok' : diff > 0 ? 'warn' : 'bad'} span-2`}>{diff === 0 ? 'La caja cuadra exacto.' : diff > 0 ? `Sobrante de ${formatMoney(diff)}.` : `Faltante de ${formatMoney(-diff)}.`}</div>}
-        <div className="span-2"><Field label="Observaciones" htmlFor="cn"><input id="cn" value={note} onChange={(e) => setNote(e.target.value)} /></Field></div>
-        {error && <div className="alert bad span-2">{error}</div>}
+      <form id="close-cash" className="close-grid" onSubmit={submit} noValidate>
+        <section className="close-step">
+          <h4><span>1</span> Arqueo</h4>
+          <dl className="order-totals" style={{ margin: 0 }}>
+            <div><dt>Base de apertura</dt><dd>{formatMoney(session.openingAmount)}</dd></div>
+            <div><dt>Ventas y abonos en efectivo</dt><dd>{formatMoney(summary.byMethod.find((m) => m.method === 'efectivo')?.amount || 0)}</dd></div>
+            <div><dt>Ingresos − egresos</dt><dd>{formatMoney(summary.income - summary.expenses)}</dd></div>
+            <div className="total"><dt>Efectivo esperado</dt><dd>{formatMoney(summary.expectedCash)}</dd></div>
+          </dl>
+          <Field label="Efectivo contado en la caja" htmlFor="cc" required><MoneyInput id="cc" value={counted} onChange={setCounted} autoFocus /></Field>
+          {diff !== null && <div className={`alert ${diff === 0 ? 'ok' : diff > 0 ? 'warn' : 'bad'}`}>{diff === 0 ? 'La caja cuadra exacto.' : diff > 0 ? `Sobrante de ${formatMoney(diff)}.` : `Faltante de ${formatMoney(-diff)}.`}</div>}
+        </section>
+
+        <section className="close-step">
+          <h4><span>2</span> Propinas <small className="muted">· {formatMoney(summary.tips)} en el turno</small></h4>
+          {!staff ? <Spinner /> : <>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-sm" onClick={split} disabled={!summary.tips}>Repartir en partes iguales</button>
+              {staff.total > 0 && <button type="button" className="btn btn-sm" onClick={() => setTips(Object.fromEntries(staff.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested])))}>Según sus mesas</button>}
+              {Object.keys(tips).length > 0 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setTips({})}>Ninguna</button>}
+            </div>
+            <ul className="tip-list">
+              {shown.map((x) => (
+                <li key={x.id} className={x.id in tips ? 'on' : ''}>
+                  <label className="check"><input type="checkbox" checked={x.id in tips} onChange={() => toggle(x.id)} /> <span><strong>{x.name}</strong><small className="block muted">{x.positions.length ? x.positions.join(', ') : x.role}{x.suggested > 0 ? ` · ${formatMoney(x.suggested)} de sus mesas` : ''}</small></span></label>
+                  {x.id in tips && <MoneyInput id={`tip-${x.id}`} value={tips[x.id]} onChange={(v) => setTips((t) => ({ ...t, [x.id]: v }))} aria-label={`Propina para ${x.name}`} />}
+                </li>
+              ))}
+              {!shown.length && <li className="muted"><small>Nadie atendió pedidos con propina en este turno.</small></li>}
+            </ul>
+            {staff.employees.length > shown.length && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAll(true)}>Ver todo el personal ({staff.employees.length})</button>}
+            <div className="row-between"><span className="muted">Total a pagar en efectivo</span><strong className="money">{formatMoney(tipTotal)}</strong></div>
+            {tipTotal > summary.tips && <small className="text-warn">Repartes más de lo que dejaron de propina en el turno.</small>}
+          </>}
+        </section>
+
+        <section className="close-step">
+          <h4><span>3</span> ¿A dónde va el efectivo?</h4>
+          <Field label="Queda en la caja para el próximo turno" htmlFor="cf" hint="Base para dar cambio mañana"><MoneyInput id="cf" value={nextFloat} onChange={setNextFloat} /></Field>
+          <div className={`vault-box${toVault !== null && toVault < 0 ? ' bad' : ''}`}>
+            <span>Pasa a la bóveda</span>
+            <strong>{toVault === null ? '—' : formatMoney(toVault)}</strong>
+            <small>{cnt === null ? 'Escribe el efectivo contado' : `${formatMoney(cnt)} contado − ${formatMoney(tipTotal)} propinas − ${formatMoney(Number(nextFloat) || 0)} base`}</small>
+          </div>
+          <Field label="Observaciones del cierre" htmlFor="cn"><textarea id="cn" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. faltante por un billete falso, se pagó el hielo con caja" /></Field>
+        </section>
+        {error && <div className="alert bad close-full">{error}</div>}
       </form>
     </Modal>
   )
@@ -144,7 +204,12 @@ const SessionView = ({ id, canClose, onChanged }) => {
             {m.expenses > 0 && <div><dt>Egresos</dt><dd>−{formatMoney(m.expenses)}</dd></div>}
             {m.toVault > 0 && <div><dt>A la bóveda</dt><dd>{formatMoney(m.toVault)}</dd></div>}
           </dl>}
-          {!open && s.closeNote && <p className="hint">{s.closeNote}</p>}
+          {!open && <dl className="order-totals" style={{ marginTop: 12 }}>
+            <div><dt>Propinas pagadas</dt><dd>{formatMoney(s.tipsPaid)}</dd></div>
+            <div><dt>Quedó en caja para el próximo turno</dt><dd>{formatMoney(s.nextFloat)}</dd></div>
+          </dl>}
+          {!open && m.tipPayouts?.length > 0 && <ul className="list" style={{ marginTop: 8 }}>{m.tipPayouts.map((t) => <li key={t.id}><span>🤝 {t.name}</span><span className="money">{formatMoney(t.amount)}</span></li>)}</ul>}
+          {!open && s.closeNote && <p className="hint">📝 {s.closeNote}</p>}
         </Card>
       </div>
       {modal === 'move' && <MoveModal session={s} onClose={() => setModal(null)} onDone={(t) => { setModal(null); toast(t === 'ingreso' ? 'Ingreso registrado' : 'Egreso registrado'); load() }} />}
