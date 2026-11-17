@@ -1289,3 +1289,9 @@ li.preparando .kds-item { background: var(--accent-50); }
 .inc-res { margin: 6px 0 0; font-size: 13px; padding: 6px 10px; border-radius: 8px; background: var(--gray-100); }
 [data-theme="dark"] .inc-list .inc-emoji, [data-theme="dark"] .inc-res { background: var(--gray-50); }
 @media (max-width: 640px) { .inc-types { grid-template-columns: repeat(2, minmax(0, 1fr)); } .inc-list li { flex-wrap: wrap; } .inc-side { width: 100%; flex-direction: row; justify-content: space-between; align-items: center; } }
+
+/* Sin caja abierta no se toman pedidos */
+.cash-gate { align-items: center; flex-wrap: wrap; }
+.cash-gate > svg { font-size: 20px; }
+.tbl.locked .tbl-free { color: var(--muted); }
+.tbl.locked { border-left-color: var(--gray-300); }

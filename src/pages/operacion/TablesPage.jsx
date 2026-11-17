@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  MdTableRestaurant, MdPeople, MdShoppingBag, MdSettings, MdCheck, MdRoomService, MdReceipt, MdDeliveryDining, MdLabel, MdSwapHoriz, MdAdd
+  MdTableRestaurant, MdPeople, MdShoppingBag, MdSettings, MdCheck, MdRoomService, MdReceipt, MdDeliveryDining, MdLabel, MdSwapHoriz, MdAdd, MdLock, MdLockOpen
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
@@ -16,8 +16,8 @@ const POLL_MS = 15000
 
 // ---------- Tarjeta de mesa ----------
 // Libre: toca para abrirla. Ocupada: toca para entrar al pedido; abajo, alias y traslado.
-const TableCard = ({ t, seller, onOpen, onAlias, onMove, onAttend }) => (
-  <div className={`tbl tbl-${t.status}${t.calls.length ? ' calling' : ''}`}>
+const TableCard = ({ t, seller, cashOpen, onOpen, onAlias, onMove, onAttend }) => (
+  <div className={`tbl tbl-${t.status}${t.calls.length ? ' calling' : ''}${!cashOpen && !t.order ? ' locked' : ''}`}>
     <button type="button" className="tbl-main" onClick={() => onOpen(t)} aria-label={`${t.name}: ${TABLE_STATUS[t.status]}${t.order?.alias ? `, ${t.order.alias}` : ''}`}>
       <span className="tbl-head"><strong>{t.name}</strong><small><MdPeople /> {t.order?.guests || t.seats}</small></span>
       {t.order?.alias && <span className="tbl-alias"><MdLabel /> {t.order.alias}</span>}
@@ -25,7 +25,7 @@ const TableCard = ({ t, seller, onOpen, onAlias, onMove, onAttend }) => (
         <span className="tbl-total">{formatMoney(t.order.total)}</span>
         <small className="tbl-meta">{t.order.number} · {since(t.order.openedAt)}</small>
         <small className="tbl-meta">{t.order.waiter}{t.order.ready ? <b className="tbl-ready"> · {t.order.ready} listo{t.order.ready === 1 ? '' : 's'}</b> : ''}</small>
-      </> : <span className="tbl-free"><MdAdd /> Abrir mesa</span>}
+      </> : <span className="tbl-free">{cashOpen ? <><MdAdd /> Abrir mesa</> : <><MdLock /> Caja cerrada</>}</span>}
     </button>
     {t.calls.length > 0 && (
       <div className="tbl-calls">{t.calls.map((c) => (
@@ -68,6 +68,7 @@ const TablesPage = () => {
   const open = (t) => {
     if (t.order) return navigate(`/pedidos/${t.order.id}`)
     if (!seller) return toast('Tu cargo no abre mesas', 'bad')
+    if (!data.cashOpen) return toast('Primero hay que abrir la caja del día', 'bad')
     setModal({ open: t })
   }
   const attend = async (c) => { try { await api.post(`/llamados/${c.id}/atender`); toast('Llamado atendido'); load() } catch (e) { toast(errorMessage(e), 'bad') } }
@@ -83,10 +84,15 @@ const TablesPage = () => {
   return (
     <div className="stack">
       <PageHead title="Mesas" subtitle={`${data.site?.name || ''} · ${count('ocupada') + count('por_cobrar')} ocupadas de ${data.tables.filter((t) => t.active !== false).length}`}>
-        <button type="button" className="btn" onClick={() => setModal({ counter: 'llevar' })}><MdShoppingBag /> Para llevar</button>
-        <button type="button" className="btn" onClick={() => setModal({ counter: 'domicilio' })}><MdDeliveryDining /> Domicilio</button>
+        <button type="button" className="btn" onClick={() => setModal({ counter: 'llevar' })} disabled={!data.cashOpen}><MdShoppingBag /> Para llevar</button>
+        <button type="button" className="btn" onClick={() => setModal({ counter: 'domicilio' })} disabled={!data.cashOpen}><MdDeliveryDining /> Domicilio</button>
         {admin && <Link to="/configuracion/mesas" className="btn btn-icon" title="Configurar mesas y QR" aria-label="Configurar mesas y QR"><MdSettings /></Link>}
       </PageHead>
+      {!data.cashOpen && (
+        <div className="alert warn cash-gate"><MdLock /><div className="grow"><strong>La caja del día no está abierta.</strong> Mientras tanto no se pueden abrir mesas ni tomar pedidos para llevar o domicilio.</div>
+          {can('cajero') ? <Link to="/caja" className="btn btn-sm btn-primary"><MdLockOpen /> Abrir caja</Link> : <small>Pídele al cajero que abra el turno.</small>}
+        </div>
+      )}
       {admin && !user.siteId && <small className="hint">Ves la sucursal {data.site?.name}. Para otra, elígela arriba en el selector de sucursal.</small>}
       <div className="row-between wrap" style={{ gap: 10 }}>
         <div className="chip-list">
@@ -100,7 +106,7 @@ const TablesPage = () => {
       ) : groups.map((g) => (
         <section key={g.key} className="stack" style={{ gap: 10 }}>
           {g.title && <div className="row-between"><h3 className="section-title">{g.title}</h3></div>}
-          <div className="tbl-grid">{g.tables.map((t) => <TableCard key={t.id} t={t} seller={seller} onOpen={open} onAlias={(x) => setModal({ alias: x })} onMove={(x) => setModal({ move: x })} onAttend={attend} />)}</div>
+          <div className="tbl-grid">{g.tables.map((t) => <TableCard key={t.id} t={t} seller={seller} cashOpen={data.cashOpen} onOpen={open} onAlias={(x) => setModal({ alias: x })} onMove={(x) => setModal({ move: x })} onAttend={attend} />)}</div>
         </section>
       ))}
       {data.counter.length > 0 && (
