@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from 'react'
-import { MdStorefront, MdPercent, MdPalette, MdChevronRight } from 'react-icons/md'
+import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2 } from 'react-icons/md'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
 import { Card, Field, PageHead, Spinner, useToast } from '../components/ui'
 
+// Qué puede hacer el cliente al escanear el QR de la mesa.
+const QR_MODES = [
+  ['llamar', 'Solo llamar al mesero', 'Ve la carta y su cuenta, llama al mesero o pide la cuenta. Los pedidos los toma el mesero.'],
+  ['confirmar', 'Pedir con confirmación', 'El cliente arma su pedido en la carta y el mesero lo acepta antes de que llegue a cocina y bar.'],
+  ['directo', 'Pedir directo', 'El pedido entra a la cuenta de la mesa y a las comandas al instante. El personal recibe el aviso.']
+]
 const TYPES = [['restaurante', 'Restaurante'], ['bar', 'Bar'], ['social_bar', 'Social bar'], ['discoteca', 'Discoteca'], ['market', 'Market'], ['cafeteria', 'Cafetería'], ['otro', 'Otro']]
 
 // Configuración general del establecimiento (superadmin y admin). La apariencia es solo del superadmin.
@@ -59,6 +65,17 @@ const SettingsPage = () => {
             <div className="form-grid">
               <Field label="Porcentaje" htmlFor="tp"><div className="input-prefix"><span>%</span><input id="tp" inputMode="decimal" value={form.tipPercent} onChange={set('tipPercent')} /></div></Field>
               <label className="check span-2"><input type="checkbox" checked={form.tipSuggested} onChange={set('tipSuggested')} /> Sugerir la propina en todas las cuentas</label>
+            </div>
+          </Card>
+          <Card title="Carta por QR" icon={<MdQrCode2 />} subtitle="Lo que puede hacer el cliente al escanear el código de su mesa.">
+            <div className="stack" style={{ gap: 8 }} role="radiogroup" aria-label="Pedidos desde el QR">
+              {QR_MODES.map(([k, l, d]) => (
+                <label key={k} className={`check-card${form.qrOrdering === k ? ' on' : ''}`}>
+                  <input type="radio" name="qrOrdering" value={k} checked={form.qrOrdering === k} onChange={set('qrOrdering')} />
+                  <span><b>{l}</b><small>{d}</small></span>
+                </label>
+              ))}
+              <small className="muted">Sin un turno de caja abierto en la sucursal, el cliente solo puede llamar al mesero.</small>
             </div>
           </Card>
           {user.role === 'superadmin' && (

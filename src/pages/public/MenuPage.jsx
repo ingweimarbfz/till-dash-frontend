@@ -1,13 +1,58 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { MdRoomService, MdReceipt, MdSearch, MdCheckCircle } from 'react-icons/md'
+import { MdQrCodeScanner, MdRoomService, MdReceipt, MdSearch, MdCheckCircle, MdAdd, MdRemove, MdShoppingBag, MdClose, MdPerson, MdPeople, MdSchedule, MdPlace, MdHourglassTop } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { BrandLogo } from '../../components/Logo'
 import { Spinner } from '../../components/ui'
 import { formatMoney } from '../../utils/format'
 
-// Carta pública de la mesa (QR): productos con el precio del momento, la cuenta abierta,
-// y botones para llamar al mesero o pedir la cuenta. No pide iniciar sesión.
+const NO_SITE = { params: { sede: undefined } }
+// Sin tocar la carta por este tiempo, se cierra: deja de consultar y para volver a usarla hay que escanear el QR.
+const IDLE_MS = 10 * 60e3
+const ACTIVITY = ['pointerdown', 'keydown', 'scroll', 'touchstart']
+const ITEM_STATUS = { pendiente: 'En cola', preparando: 'Preparando', listo: 'Listo', entregado: 'Entregado' }
+const since = (d) => { const m = Math.max(0, Math.round((Date.now() - new Date(d)) / 60000)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min` }
+const cartKey = (token) => `td_cart_${token}`
+const loadCart = (token) => { try { return JSON.parse(sessionStorage.getItem(cartKey(token)) || '{}') } catch { return {} } }
+const saveCart = (token, c) => { try { sessionStorage.setItem(cartKey(token), JSON.stringify(c)) } catch { /* sin almacenamiento */ } }
+
+// Carrito: hoja inferior con los productos elegidos, nombre opcional y nota.
+const CartSheet = ({ cart, products, mode, onQty, onClose, onSend, sending, error }) => {
+  const [name, setName] = useState('')
+  const [note, setNote] = useState('')
+  const lines = Object.entries(cart).map(([id, q]) => ({ p: products.find((x) => x.id === Number(id)), q })).filter((l) => l.p && l.q > 0)
+  const total = lines.reduce((a, l) => a + l.q * l.p.finalPrice, 0)
+  return (
+    <div className="menu-sheet-backdrop" onClick={onClose}>
+      <div className="menu-sheet" role="dialog" aria-label="Tu pedido" onClick={(e) => e.stopPropagation()}>
+        <div className="row-between"><h3>Tu pedido</h3><button type="button" className="btn btn-ghost btn-icon" onClick={onClose} aria-label="Cerrar"><MdClose /></button></div>
+        {!lines.length ? <p className="muted">Aún no agregas productos.</p> : (
+          <ul className="menu-cart">{lines.map(({ p, q }) => (
+            <li key={p.id}>
+              <div className="grow"><strong>{p.name}</strong><small>{formatMoney(p.finalPrice)} c/u</small></div>
+              <div className="qty-step">
+                <button type="button" onClick={() => onQty(p.id, q - 1)} aria-label={`Quitar un ${p.name}`}><MdRemove /></button>
+                <b>{q}</b>
+                <button type="button" onClick={() => onQty(p.id, q + 1)} aria-label={`Agregar un ${p.name}`} disabled={q >= 20}><MdAdd /></button>
+              </div>
+              <b className="money">{formatMoney(q * p.finalPrice)}</b>
+            </li>
+          ))}</ul>
+        )}
+        <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} placeholder="Tu nombre (opcional)" aria-label="Tu nombre" />
+        <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={140} placeholder="Nota para la cocina o el bar (opcional)" aria-label="Nota" />
+        {error && <div className="alert bad">{error}</div>}
+        <button type="button" className="btn btn-primary btn-block menu-send" disabled={!lines.length || sending} onClick={() => onSend({ name, note, items: lines.map(({ p, q }) => ({ productId: p.id, quantity: q })) })}>
+          {sending ? <Spinner /> : <MdShoppingBag />} {mode === 'directo' ? 'Pedir' : 'Enviar al mesero'} · {formatMoney(total)}
+        </button>
+        <small className="muted" style={{ textAlign: 'center' }}>{mode === 'directo' ? 'Tu pedido va directo a la cocina y el bar, y se suma a tu cuenta.' : 'Tu mesero confirma el pedido y lo envía a la cocina y el bar.'}</small>
+      </div>
+    </div>
+  )
+}
+
+// Carta pública de la mesa (QR): datos de la mesa y su cuenta, productos con el precio del momento,
+// llamar al mesero o pedir la cuenta y, si el establecimiento lo permite, hacer el pedido.
 const MenuPage = () => {
   const { token } = useParams()
   const [data, setData] = useState(null)
@@ -16,12 +61,41 @@ const MenuPage = () => {
   const [q, setQ] = useState('')
   const [sent, setSent] = useState('')
   const [busy, setBusy] = useState('')
-  const load = useCallback(() => api.get(`/carta/${token}`, { params: { sede: undefined } }).then(({ data: d }) => { setData(d); setError('') }).catch((e) => setError(errorMessage(e))), [token])
-  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t) }, [load])
+  const [cart, setCart] = useState(() => loadCart(token))
+  const [sheet, setSheet] = useState(false)
+  const [sendError, setSendError] = useState('')
+  const session = useRef(null)
+  const lastActive = useRef(Date.now())
+  const [expired, setExpired] = useState('')
+  const opts = () => ({ ...NO_SITE, headers: session.current ? { 'x-carta-session': session.current } : {} })
+  const onFail = (e) => { if (e?.response?.data?.expired) { setExpired(e.response.data.message); return true } return false }
+  const load = useCallback(() => api.get(`/carta/${token}`, opts()).then(({ data: d }) => { session.current = d.session; setData(d); setError('') })
+    .catch((e) => { if (!onFail(e)) setError(errorMessage(e)) }), [token]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (expired) return undefined
+    load()
+    const t = setInterval(() => {
+      if (Date.now() - lastActive.current > IDLE_MS) { setExpired('La carta se cerró por inactividad. Escanea de nuevo el código QR de tu mesa para llamar al mesero o pedir.'); return }
+      if (document.visibilityState === 'visible') load()
+    }, 20000)
+    return () => clearInterval(t)
+  }, [load, expired])
+  useEffect(() => {
+    const mark = () => { lastActive.current = Date.now() }
+    ACTIVITY.forEach((ev) => window.addEventListener(ev, mark, { passive: true }))
+    return () => ACTIVITY.forEach((ev) => window.removeEventListener(ev, mark))
+  }, [])
   useEffect(() => { if (data?.business) document.title = `${data.business.name} · Carta` }, [data])
+  useEffect(() => { saveCart(token, cart) }, [token, cart])
   const call = async (kind) => {
     setBusy(kind)
-    try { const { data: r } = await api.post(`/carta/${token}/llamar`, { kind }, { params: { sede: undefined } }); setSent(r.message); load() } catch (e) { setSent(errorMessage(e)) }
+    try { const { data: r } = await api.post(`/carta/${token}/llamar`, { kind }, opts()); setSent(r.message); load() } catch (e) { if (!onFail(e)) setSent(errorMessage(e)) }
+    setBusy('')
+  }
+  const setQty = (id, n) => setCart((c) => { const x = { ...c }; if (n > 0) x[id] = Math.min(20, n); else delete x[id]; return x })
+  const send = async (body) => {
+    setBusy('pedido'); setSendError('')
+    try { const { data: r } = await api.post(`/carta/${token}/pedido`, body, opts()); setCart({}); setSheet(false); setSent(r.message); load(); window.scrollTo({ top: 0, behavior: 'smooth' }) } catch (e) { if (!onFail(e)) setSendError(errorMessage(e)) }
     setBusy('')
   }
   const products = useMemo(() => {
@@ -29,31 +103,67 @@ const MenuPage = () => {
     return (data?.products || []).filter((p) => (cat === 'all' || p.categoryId === Number(cat)) && (!f || p.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(f)))
   }, [data, cat, q])
 
+  if (expired) {
+    const b = data?.business || {}
+    return (
+      <div className="menu-page" style={{ '--brand': b.primary, '--menu-dark': b.secondary }}>
+        <div className="menu-error">
+          {b.logoUrl ? <img src={b.logoUrl} alt={b.name} className="menu-logo" /> : <BrandLogo size={36} />}
+          <MdQrCodeScanner className="menu-expired-icon" aria-hidden="true" />
+          <h2>Escanea de nuevo</h2>
+          <p>{expired}</p>
+        </div>
+      </div>
+    )
+  }
   if (error && !data) return <div className="menu-page"><div className="menu-error"><BrandLogo size={36} /><p>{error}</p></div></div>
   if (!data) return <div className="splash"><Spinner /></div>
   const b = data.business || {}
   const style = { '--brand': b.primary, '--menu-dark': b.secondary, '--accent': b.accent, fontFamily: b.font ? `'${b.font}', system-ui, sans-serif` : undefined }
   const cats = data.categories.filter((c) => products.some((p) => p.categoryId === c.id))
+  const canOrder = data.canOrder && !data.pendingOrder
+  const count = Object.values(cart).reduce((a, n) => a + n, 0)
+  const cartTotal = Object.entries(cart).reduce((a, [id, n]) => a + n * (data.products.find((p) => p.id === Number(id))?.finalPrice || 0), 0)
+  const o = data.order
   return (
-    <div className="menu-page" style={style}>
+    <div className={`menu-page${canOrder && count ? ' has-cart' : ''}`} style={style}>
       <header className="menu-hero">
         {b.logoUrl ? <img src={b.logoUrl} alt={b.name} className="menu-logo" /> : <BrandLogo size={34} onDark />}
         <h1>{b.name}</h1>
         {b.slogan && <p>{b.slogan}</p>}
-        <span className="menu-table">{data.table.name}{data.table.site ? ` · ${data.table.site}` : ''}</span>
+        <span className="menu-table">{data.table.name}</span>
       </header>
+
+      <section className="menu-info" aria-label="Tu mesa">
+        {data.table.area && <span><MdPlace /> {data.table.area}{data.table.site ? ` · ${data.table.site}` : ''}</span>}
+        {!data.table.area && data.table.site && <span><MdPlace /> {data.table.site}</span>}
+        <span><MdPeople /> {o?.guests ? `${o.guests} de ${data.table.seats} puestos` : `${data.table.seats} puestos`}</span>
+        {o?.waiter && <span><MdPerson /> Te atiende {o.waiter}</span>}
+        {o?.openedAt && <span><MdSchedule /> En la mesa hace {since(o.openedAt)}</span>}
+      </section>
 
       <div className="menu-actions">
         <button type="button" className="btn btn-primary" onClick={() => call('mesero')} disabled={Boolean(busy) || data.calls.includes('mesero')}>{busy === 'mesero' ? <Spinner /> : <MdRoomService />} {data.calls.includes('mesero') ? 'Mesero en camino' : 'Llamar al mesero'}</button>
-        <button type="button" className="btn" onClick={() => call('cuenta')} disabled={Boolean(busy) || data.calls.includes('cuenta') || !data.order}>{busy === 'cuenta' ? <Spinner /> : <MdReceipt />} {data.calls.includes('cuenta') ? 'Cuenta pedida' : 'Pedir la cuenta'}</button>
+        <button type="button" className="btn" onClick={() => call('cuenta')} disabled={Boolean(busy) || data.calls.includes('cuenta') || !o}>{busy === 'cuenta' ? <Spinner /> : <MdReceipt />} {data.calls.includes('cuenta') ? 'Cuenta pedida' : 'Pedir la cuenta'}</button>
       </div>
       {sent && <div className="menu-sent" role="status"><MdCheckCircle /> {sent}</div>}
+      {data.pendingOrder && (
+        <div className="menu-pending" role="status">
+          <MdHourglassTop />
+          <div><strong>Tu pedido está esperando al mesero</strong><small>{data.pendingOrder.items.map((i) => `${i.quantity} × ${i.name}`).join(', ')} · {formatMoney(data.pendingOrder.total)}</small></div>
+        </div>
+      )}
 
-      {data.order && data.order.items.length > 0 && (
-        <details className="menu-bill">
-          <summary>Tu cuenta · {formatMoney(data.order.total)}</summary>
-          <ul>{data.order.items.map((i, n) => <li key={n}><span>{i.quantity} × {i.name}{i.courtesy ? ' 🎁' : ''}</span><span>{i.courtesy ? 'Cortesía' : formatMoney(i.quantity * i.price)}</span></li>)}</ul>
-          <small>Pedido {data.order.number}. La propina es voluntaria.</small>
+      {o && o.items.length > 0 && (
+        <details className="menu-bill" open={o.items.some((i) => i.status === 'pendiente' || i.status === 'preparando')}>
+          <summary>Tu cuenta · {formatMoney(o.total)}</summary>
+          <ul>{o.items.map((i, n) => (
+            <li key={n}>
+              <span>{i.quantity} × {i.name}{i.courtesy ? ' 🎁' : ''} {ITEM_STATUS[i.status] && i.status !== 'entregado' && <em className={`menu-st ${i.status}`}>{ITEM_STATUS[i.status]}</em>}</span>
+              <span>{i.courtesy ? 'Cortesía' : formatMoney(i.quantity * i.price)}</span>
+            </li>
+          ))}</ul>
+          <small>Pedido {o.number}. La propina es voluntaria.</small>
         </details>
       )}
 
@@ -69,23 +179,40 @@ const MenuPage = () => {
         <section key={c.id} className="menu-section">
           <h2>{c.emoji} {c.name}</h2>
           {c.description && <p className="muted">{c.description}</p>}
-          <ul className="menu-list">{products.filter((p) => p.categoryId === c.id).map((p) => (
-            <li key={p.id} className={p.soldOut ? 'sold' : ''}>
-              {p.photoUrl && <img src={p.photoUrl} alt="" loading="lazy" />}
-              <div className="grow">
-                <strong>{p.name}</strong>
-                {p.description && <small>{p.description}</small>}
-                {p.promo && <span className="menu-promo" style={{ background: p.promo.color }}>{p.promo.emoji} {p.promo.tag || p.promo.name}</span>}
-              </div>
-              <div className="menu-price">
-                {p.soldOut ? <span className="badge muted">Agotado</span> : p.promo ? <><s>{formatMoney(p.price)}</s><b>{formatMoney(p.finalPrice)}</b></> : <b>{formatMoney(p.price)}</b>}
-              </div>
-            </li>
-          ))}</ul>
+          <ul className="menu-list">{products.filter((p) => p.categoryId === c.id).map((p) => {
+            const n = cart[p.id] || 0
+            return (
+              <li key={p.id} className={p.soldOut ? 'sold' : ''}>
+                {p.photoUrl && <img src={p.photoUrl} alt="" loading="lazy" />}
+                <div className="grow">
+                  <strong>{p.name}</strong>
+                  {p.description && <small>{p.description}</small>}
+                  {p.promo && <span className="menu-promo" style={{ background: p.promo.color }}>{p.promo.emoji} {p.promo.tag || p.promo.name}</span>}
+                </div>
+                <div className="menu-price">
+                  {p.soldOut ? <span className="badge muted">Agotado</span> : p.promo ? <><s>{formatMoney(p.price)}</s><b>{formatMoney(p.finalPrice)}</b></> : <b>{formatMoney(p.price)}</b>}
+                  {canOrder && !p.soldOut && (n ? (
+                    <div className="qty-step sm">
+                      <button type="button" onClick={() => setQty(p.id, n - 1)} aria-label={`Quitar un ${p.name}`}><MdRemove /></button>
+                      <b>{n}</b>
+                      <button type="button" onClick={() => setQty(p.id, n + 1)} aria-label={`Agregar otro ${p.name}`} disabled={n >= 20}><MdAdd /></button>
+                    </div>
+                  ) : <button type="button" className="menu-add" onClick={() => setQty(p.id, 1)} aria-label={`Agregar ${p.name}`}><MdAdd /> Agregar</button>)}
+                </div>
+              </li>
+            )
+          })}</ul>
         </section>
       ))}
       {!cats.length && <p className="muted" style={{ textAlign: 'center' }}>No hay productos con ese filtro.</p>}
       <footer className="menu-foot">Hecho con TillDash+</footer>
+
+      {canOrder && count > 0 && (
+        <button type="button" className="menu-cart-bar" onClick={() => { setSendError(''); setSheet(true) }}>
+          <span className="menu-cart-count">{count}</span> Ver mi pedido <b className="money">{formatMoney(cartTotal)}</b>
+        </button>
+      )}
+      {sheet && <CartSheet cart={cart} products={data.products} mode={data.ordering} onQty={setQty} onClose={() => setSheet(false)} onSend={send} sending={busy === 'pedido'} error={sendError} />}
     </div>
   )
 }

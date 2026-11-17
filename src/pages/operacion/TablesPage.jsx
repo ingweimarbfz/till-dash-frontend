@@ -33,7 +33,7 @@ const TableCard = ({ t, seller, cashOpen, onOpen, onAlias, onMove, onAttend }) =
     {t.calls.length > 0 && (
       <div className="tbl-calls">{t.calls.map((c) => (
         <button key={c.id} type="button" className="tbl-call" onClick={() => onAttend(c)} title="Marcar como atendido">
-          {c.kind === 'cuenta' ? <MdReceipt /> : <MdRoomService />} {c.kind === 'cuenta' ? 'Cuenta' : 'Llama'} <MdCheck />
+          {c.kind === 'cuenta' ? <MdReceipt /> : c.kind === 'pedido' ? <MdShoppingBag /> : <MdRoomService />} {c.kind === 'cuenta' ? 'Cuenta' : c.kind === 'pedido' ? 'Pedido' : 'Llama'} <MdCheck />
         </button>
       ))}</div>
     )}
