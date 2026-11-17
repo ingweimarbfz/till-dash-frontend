@@ -75,6 +75,8 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
   const [pick, setPick] = useState(defaults.productId ? String(defaults.productId) : '')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  // Desde el botón de un producto, la ventana trabaja solo con ese producto.
+  const single = Boolean(defaults.productId)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }))
   const tracked = products.filter((p) => p.active && p.trackStock)
   const available = tracked.filter((p) => !items.some((i) => i.product.id === p.id))
@@ -107,7 +109,7 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
   return (
-    <Modal size="lg" title="Entrada, ajuste o baja" onClose={onClose}
+    <Modal size="xl" title={single ? `Inventario · ${items[0]?.product.name || ''}` : 'Entrada, ajuste o baja'} onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="move-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdMoveToInbox />} Registrar</button></>}>
       <form id="move-form" className="stack" style={{ gap: 14 }} onSubmit={submit} noValidate>
         <div className="seg seg-wrap">{Object.entries(MOVE_TITLES).map(([k, l]) => <button key={k} type="button" className={`btn btn-sm${f.type === k ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, type: k }))}>{l}</button>)}</div>
@@ -115,45 +117,49 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
           <Field label="Bodega" htmlFor="mw" required><select id="mw" value={f.warehouseId} onChange={set('warehouseId')}><option value="">Selecciona…</option><WarehouseOptions sites={sites} warehouses={warehouses} /></select></Field>
           {f.type === 'entrada' ? <Field label="Proveedor" htmlFor="ms"><input id="ms" value={f.supplier} onChange={set('supplier')} /></Field> : <span />}
         </div>
-        <div className="item-row">
+        {!single && <div className="item-row">
           <select aria-label="Producto" value={pick} onChange={(e) => { setPick(e.target.value); add(e.target.value) }} style={{ flex: 1 }}>
             <option value="">{available.length ? 'Agregar producto…' : tracked.length ? 'Ya agregaste todos' : 'No hay productos con inventario'}</option>
             <ProductOptions products={available} />
           </select>
-        </div>
+        </div>}
         {items.length > 0 && (
-          <div className="table-wrap"><table className="table">
-            <thead><tr><th>Producto</th><th className="num hide-sm">En bodega</th>{boxed && <th>Viene por</th>}<th className="num">Cantidad</th>{boxed && <th className="num">Costo</th>}<th /></tr></thead>
-            <tbody>{items.map((i, n) => (
-              <tr key={i.product.id}>
-                <td><strong>{i.product.name}</strong><small className="block">{i.product.category}</small></td>
-                <td className="num hide-sm">{f.warehouseId ? fmtQty(stockIn(i.product, f.warehouseId), i.product.unit) : '—'}</td>
-                {boxed && <td>
-                  <div className="seg" role="group" aria-label={`Presentación de ${i.product.name}`}>
-                    <button type="button" className={`btn btn-sm${!i.pack ? ' on' : ''}`} onClick={() => setItem(n, 'pack')(false)}>Unidad</button>
-                    <button type="button" className={`btn btn-sm${i.pack ? ' on' : ''}`} onClick={() => setItem(n, 'pack')(true)}>Caja</button>
-                  </div>
-                </td>}
-                {boxed && i.pack ? <>
-                  <td className="num">
-                    <div className="box-calc">
-                      <label><input type="number" min="1" step="1" value={i.boxes} onChange={setItem(n, 'boxes')} placeholder="0" aria-label={`Cajas de ${i.product.name}`} /> <small>cajas de</small></label>
-                      <label><input type="number" min="1" step="1" value={i.perBox} onChange={setItem(n, 'perBox')} placeholder="30" aria-label={`Unidades por caja de ${i.product.name}`} /> <small>{UNIT_SHORT[i.product.unit]}</small></label>
+          <div className="mv-items">{items.map((i, n) => {
+            const u = UNIT_SHORT[i.product.unit]
+            const r = real(i)
+            return (
+              <div key={i.product.id} className="mv-item">
+                <div className="mv-head">
+                  <div className="grow"><strong>{i.product.name}</strong><small className="block muted">{[i.product.category, f.warehouseId ? `En bodega: ${fmtQty(stockIn(i.product, f.warehouseId), i.product.unit)}` : null].filter(Boolean).join(' · ')}</small></div>
+                  {boxed && <div className="seg" role="group" aria-label={`Presentación de ${i.product.name}`}>
+                    <button type="button" className={`btn btn-sm${!i.pack ? ' on' : ''}`} onClick={() => setItem(n, 'pack')(false)}>Por unidad</button>
+                    <button type="button" className={`btn btn-sm${i.pack ? ' on' : ''}`} onClick={() => setItem(n, 'pack')(true)}>Por caja o canasta</button>
+                  </div>}
+                  {!single && <button type="button" className="btn btn-ghost btn-icon" aria-label={`Quitar ${i.product.name}`} onClick={() => setItems(items.filter((_, j) => j !== n))}><MdDelete /></button>}
+                </div>
+                {boxed && i.pack ? (
+                  <div className="mv-fields four">
+                    <Field label="Cajas" htmlFor={`bx${n}`}><input id={`bx${n}`} type="number" min="1" step="1" inputMode="numeric" value={i.boxes} onChange={setItem(n, 'boxes')} /></Field>
+                    <Field label={`${({ und: 'Unidades', porcion: 'Porciones', botella: 'Botellas', g: 'Gramos', kg: 'Kilos', ml: 'Mililitros', l: 'Litros' })[i.product.unit] || 'Unidades'} por caja`} htmlFor={`pb${n}`}><input id={`pb${n}`} type="number" min="1" step="1" inputMode="numeric" value={i.perBox} onChange={setItem(n, 'perBox')} /></Field>
+                    <Field label="Costo de cada caja" htmlFor={`bc${n}`}><MoneyInput id={`bc${n}`} value={i.boxCost} onChange={setItem(n, 'boxCost')} /></Field>
+                    <div className={`mv-result${r.quantity > 0 && r.unitCost !== null ? ' ready' : ''}`}>
+                      {r.quantity > 0 ? <>
+                        <span>Entran <b>{fmtQty(r.quantity, i.product.unit)}</b></span>
+                        <span>{r.unitCost !== null ? <>a <b>{formatMoney(r.unitCost)}</b> c/u</> : 'Falta el costo de la caja'}</span>
+                        {r.unitCost !== null && <small>Total {formatMoney(Number(i.boxes) * Number(i.boxCost))}</small>}
+                      </> : <small>Escribe las cajas y cuántas {u} trae cada una</small>}
                     </div>
-                    {real(i).quantity > 0 && <small className="block muted">= {fmtQty(real(i).quantity, i.product.unit)}</small>}
-                  </td>
-                  <td className="num" style={{ minWidth: 150 }}>
-                    <MoneyInput value={i.boxCost} onChange={setItem(n, 'boxCost')} placeholder="Costo de la caja" aria-label={`Costo por caja de ${i.product.name}`} />
-                    {real(i).unitCost !== null && <small className="block muted">{formatMoney(real(i).unitCost)} c/u</small>}
-                  </td>
-                </> : <>
-                  <td className="num"><input type="number" step="any" value={i.quantity} onChange={setItem(n, 'quantity')} placeholder={f.type === 'ajuste' ? '+/−' : '0'} style={{ width: 100, textAlign: 'right' }} aria-label={`Cantidad de ${i.product.name}`} /> <small>{UNIT_SHORT[i.product.unit]}</small></td>
-                  {boxed && <td className="num" style={{ minWidth: 150 }}><MoneyInput value={i.unitCost} onChange={setItem(n, 'unitCost')} aria-label={`Costo de ${i.product.name}`} /><small className="block muted">por {UNIT_SHORT[i.product.unit]}</small></td>}
-                </>}
-                <td className="right"><button type="button" className="btn btn-ghost btn-icon" aria-label="Quitar" onClick={() => setItems(items.filter((_, j) => j !== n))}><MdDelete /></button></td>
-              </tr>
-            ))}</tbody>
-          </table></div>
+                  </div>
+                ) : (
+                  <div className={`mv-fields${boxed ? ' three' : ' one'}`}>
+                    <Field label={f.type === 'ajuste' ? `Cantidad (+ suma, − resta) en ${u}` : `Cantidad en ${u}`} htmlFor={`q${n}`}><input id={`q${n}`} type="number" step="any" inputMode="decimal" value={i.quantity} onChange={setItem(n, 'quantity')} /></Field>
+                    {boxed && <Field label={`Costo por ${u}`} htmlFor={`uc${n}`}><MoneyInput id={`uc${n}`} value={i.unitCost} onChange={setItem(n, 'unitCost')} /></Field>}
+                    {boxed && <div className={`mv-result${Number(i.quantity) > 0 ? ' ready' : ''}`}>{Number(i.quantity) > 0 ? <><span>Entran <b>{fmtQty(Number(i.quantity), i.product.unit)}</b></span><small>Total {formatMoney(Number(i.quantity) * Number(i.unitCost || 0))}</small></> : <small>Escribe la cantidad</small>}</div>}
+                  </div>
+                )}
+              </div>
+            )
+          })}</div>
         )}
         <div className="form-grid">
           {f.type === 'entrada' && <Field label="N.º de factura" htmlFor="mi"><input id="mi" value={f.invoice} onChange={set('invoice')} /></Field>}
