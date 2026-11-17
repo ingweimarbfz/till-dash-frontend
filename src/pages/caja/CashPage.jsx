@@ -4,6 +4,7 @@ import {
   MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
+import { ShiftExpenseModal, FundsRequestModal, ShiftExpensesCard, RequestsTab } from './shiftExpenses'
 import { useAuth } from '../../context/AuthContext'
 import { Badge, Card, Empty, Field, Kpi, Modal, PageHead, Spinner, useToast } from '../../components/ui'
 import { MoneyInput, Tabs } from '../../components/forms'
@@ -48,8 +49,8 @@ const OpenModal = ({ register, admin, onClose, onDone }) => {
 }
 
 // ---------- Ingreso / egreso ----------
-const MoveModal = ({ session, onClose, onDone }) => {
-  const [type, setType] = useState('egreso')
+const MoveModal = ({ session, admin, onClose, onDone }) => {
+  const [type, setType] = useState('ingreso')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
@@ -58,11 +59,11 @@ const MoveModal = ({ session, onClose, onDone }) => {
     try { await api.post(`/caja/turnos/${session.id}/movimientos`, { type, amount, note }); onDone(type) } catch (err) { setError(errorMessage(err)) }
   }
   return (
-    <Modal title="Ingreso o egreso de efectivo" onClose={onClose}
+    <Modal title="Otro movimiento de efectivo" onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="cash-move" className="btn btn-primary">Registrar</button></>}>
       <form id="cash-move" className="form-grid" onSubmit={submit} noValidate>
         <div className="seg span-2">
-          <button type="button" className={`btn btn-sm${type === 'egreso' ? ' on' : ''}`} onClick={() => setType('egreso')}><MdRemove /> Egreso</button>
+          {admin && <button type="button" className={`btn btn-sm${type === 'egreso' ? ' on' : ''}`} onClick={() => setType('egreso')}><MdRemove /> Egreso</button>}
           <button type="button" className={`btn btn-sm${type === 'ingreso' ? ' on' : ''}`} onClick={() => setType('ingreso')}><MdAdd /> Ingreso</button>
           <button type="button" className={`btn btn-sm${type === 'propina_pagada' ? ' on' : ''}`} onClick={() => setType('propina_pagada')}>Pago de propinas</button>
         </div>
@@ -174,6 +175,9 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
 
 // ---------- Detalle de un turno ----------
 const SessionView = ({ id, canClose, onChanged }) => {
+  const { user } = useAuth()
+  const admin = ADMIN.includes(user.role)
+  const [ver, setVer] = useState(0)
   const [s, setS] = useState(null)
   const [modal, setModal] = useState(null)
   const [toast, toastNode] = useToast()
@@ -194,7 +198,7 @@ const SessionView = ({ id, canClose, onChanged }) => {
       </div>
       <div className="grid grid-2-1">
         <Card title="Movimientos" subtitle={`${s.register} · ${s.number} · abrió ${s.openedBy} ${since(s.openedAt)}`} flush
-          actions={open && canClose && <><button type="button" className="btn btn-sm" onClick={() => setModal('move')}><MdAdd /> Ingreso o egreso</button><button type="button" className="btn btn-sm btn-primary" onClick={() => setModal('close')}><MdLock /> Cerrar turno</button></>}>
+          actions={open && canClose && <div className="card-actions"><button type="button" className="btn btn-sm" onClick={() => setModal('move')}><MdAdd /> Otro movimiento</button><button type="button" className="btn btn-sm btn-primary" onClick={() => setModal('close')}><MdLock /> Cerrar turno</button></div>}>
           {!m.movements.length ? <Empty>Sin movimientos.</Empty> : (
             <div className="table-wrap"><table className="table">
               <thead><tr><th>Hora</th><th>Concepto</th><th className="hide-sm">Forma</th><th className="num">Valor</th></tr></thead>
@@ -225,7 +229,10 @@ const SessionView = ({ id, canClose, onChanged }) => {
           {!open && s.closeNote && <p className="hint">📝 {s.closeNote}</p>}
         </Card>
       </div>
-      {modal === 'move' && <MoveModal session={s} onClose={() => setModal(null)} onDone={(t) => { setModal(null); toast(t === 'ingreso' ? 'Ingreso registrado' : 'Egreso registrado'); load() }} />}
+      <ShiftExpensesCard session={s} version={ver} open={open && canClose} onExpense={(info) => setModal({ expense: info })} onRequest={(initial) => setModal({ request: initial || {} })} />
+      {modal?.expense && <ShiftExpenseModal session={s} info={modal.expense} admin={admin} onClose={() => setModal(null)} onAskFunds={(initial) => setModal({ request: initial })} onDone={(d) => { setModal(null); toast(`Gasto ${d.number} registrado`); setVer((v) => v + 1); load() }} />}
+      {modal?.request && <FundsRequestModal session={s} initial={modal.request} onClose={() => setModal(null)} onDone={(d) => { setModal(null); toast(`Solicitud ${d.number} enviada al administrador`); setVer((v) => v + 1) }} />}
+      {modal === 'move' && <MoveModal session={s} admin={admin} onClose={() => setModal(null)} onDone={(t) => { setModal(null); toast(t === 'ingreso' ? 'Ingreso registrado' : 'Egreso registrado'); load() }} />}
       {modal === 'close' && <CloseModal session={s} summary={m} onClose={() => setModal(null)} onDone={(d) => { setModal(null); setS(d); toast(`Turno ${d.number} cerrado`); onChanged() }} />}
       {toastNode}
     </div>
@@ -313,7 +320,9 @@ const CashPage = () => {
   const { user } = useAuth()
   const admin = ADMIN.includes(user.role)
   const [params] = useSearchParams()
-  const [tab, setTab] = useState(params.get('tab') === 'boveda' && admin ? 'boveda' : 'turno')
+  const [tab, setTab] = useState(['boveda', 'solicitudes'].includes(params.get('tab')) && admin ? params.get('tab') : 'turno')
+  const [pending, setPending] = useState(0)
+  useEffect(() => { if (admin) api.get('/caja/solicitudes', { params: { estado: 'pendiente' } }).then(({ data }) => setPending(data.pending)).catch(() => {}) }, [admin])
   const [registers, setRegisters] = useState(null)
   const [current, setCurrent] = useState(null)
   const [modal, setModal] = useState(null)
@@ -332,7 +341,7 @@ const CashPage = () => {
         <Link to="/cuentas-por-cobrar" className="btn"><MdReceiptLong /> Cuentas por cobrar</Link>
         {admin && <button type="button" className="btn" onClick={() => setModal('register')}><MdAdd /> Caja</button>}
       </PageHead>
-      <Tabs value={tab} onChange={(t) => { setTab(t); if (t === 'turno') setCurrent(null) || load() }} tabs={[['turno', 'Turnos'], ['historial', 'Historial'], ...(admin ? [['boveda', 'Bóveda']] : [])]} />
+      <Tabs value={tab} onChange={(t) => { setTab(t); if (t === 'turno') setCurrent(null) || load() }} tabs={[['turno', 'Turnos'], ['historial', 'Historial'], ...(admin ? [['solicitudes', pending ? `Solicitudes (${pending})` : 'Solicitudes'], ['boveda', 'Bóveda']] : [])]} />
       {tab === 'turno' && (!registers ? <div className="splash" style={{ minHeight: 160 }}><Spinner /></div> : <>
         <div className="register-grid">{registers.filter((r) => r.active).map((r) => (
           <div key={r.id} className={`register${r.session ? ' open' : ''}${current && r.session?.id === current.id ? ' on' : ''}`}>
@@ -348,6 +357,7 @@ const CashPage = () => {
       </>)}
       {tab === 'historial' && (current && current.fromHistory ? <><button type="button" className="btn btn-ghost btn-sm" onClick={() => setCurrent(null)}>← Volver al historial</button><SessionView key={current.id} id={current.id} canClose={false} onChanged={load} /></> : <HistoryTab onPick={(s) => setCurrent({ ...s, fromHistory: true })} />)}
       {tab === 'boveda' && admin && <VaultTab />}
+      {tab === 'solicitudes' && admin && <RequestsTab onCount={setPending} />}
       {modal?.open && <OpenModal register={modal.open} admin={admin} onClose={() => setModal(null)} onDone={(s) => { setModal(null); toast(`Turno ${s.number} abierto`); setCurrent(s); load() }} />}
       {modal === 'register' && (
         <Modal title="Nueva caja" onClose={() => setModal(null)} footer={<><button type="button" className="btn" onClick={() => setModal(null)}>Cancelar</button><button type="submit" form="reg-form" className="btn btn-primary">Crear</button></>}>
