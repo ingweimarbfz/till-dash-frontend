@@ -3,7 +3,6 @@
    Barra lateral carbón, contenido en tonos claros, acento paprika (personalizable).
    Los tokens de color viven en tokens.css.
    ===================================================================== */
-500;600;700;800&display=swap');
 
 :root {
   --bg: var(--gray-100);
