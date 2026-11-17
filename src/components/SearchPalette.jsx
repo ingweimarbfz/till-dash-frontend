@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { MdSearch, MdPersonAdd, MdPlace, MdWarehouse, MdManageAccounts, MdNorthEast, MdKeyboardReturn, MdAddBusiness, MdRestaurantMenu, MdCategory, MdLocalOffer, MdMoveToInbox } from 'react-icons/md'
+import { MdSearch, MdPersonAdd, MdPlace, MdWarehouse, MdManageAccounts, MdNorthEast, MdKeyboardReturn, MdAddBusiness, MdRestaurantMenu, MdCategory, MdLocalOffer, MdMoveToInbox, MdReceiptLong, MdTableRestaurant, MdRequestQuote } from 'react-icons/md'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { navFor } from '../utils/nav'
@@ -16,7 +16,7 @@ const ADMIN_ACTIONS = [
   { label: 'Entrada o traslado de inventario', hint: 'Compras, ajustes, bajas y traslados', to: '/inventario?tab=movimientos', icon: MdMoveToInbox, words: 'inventario entrada compra traslado bodega ajuste baja stock' }
 ]
 const ACTIONS = { superadmin: ADMIN_ACTIONS, admin: ADMIN_ACTIONS }
-const GROUP_ICON = { productos: MdRestaurantMenu, categorias: MdCategory, promociones: MdLocalOffer, usuarios: MdManageAccounts, sucursales: MdPlace, bodegas: MdWarehouse }
+const GROUP_ICON = { pedidos: MdReceiptLong, mesas: MdTableRestaurant, cuentas: MdRequestQuote, productos: MdRestaurantMenu, categorias: MdCategory, promociones: MdLocalOffer, usuarios: MdManageAccounts, sucursales: MdPlace, bodegas: MdWarehouse }
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 export const useSearchShortcut = (open) => {
@@ -52,7 +52,7 @@ const SearchPalette = ({ onClose }) => {
 
   const groups = useMemo(() => {
     const t = norm(q.trim())
-    const pages = navFor(user.role).flatMap((s) => s.items.filter((i) => !i.soon).map((i) => ({ id: i.to, title: i.label, subtitle: s.title, to: i.to, icon: i.icon })))
+    const pages = navFor(user.role, user.positions).flatMap((s) => s.items.filter((i) => !i.soon).map((i) => ({ id: i.to, title: i.label, subtitle: s.title, to: i.to, icon: i.icon })))
     const acts = (ACTIONS[user.role] || []).map((a) => ({ id: a.to, title: a.label, subtitle: a.hint, to: a.to, icon: a.icon, words: a.words }))
     const match = (x) => !t || norm(`${x.title} ${x.subtitle} ${x.words || ''}`).includes(t)
     const out = []

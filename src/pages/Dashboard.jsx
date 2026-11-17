@@ -1,14 +1,29 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2 } from 'react-icons/md'
+import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2 } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
 import { Badge, Card, Empty, Kpi, PageHead, Spinner } from '../components/ui'
-import { formatDateTime } from '../utils/format'
+import { formatDateTime, formatMoney, formatShort } from '../utils/format'
+import { since } from './operacion/common'
 import { POSITION_LABELS } from '../utils/nav'
 
-const UPCOMING_ICON = { 'Pedidos por atender': MdReceiptLong, 'Mesas abiertas': MdTableRestaurant, 'Caja del turno': MdPointOfSale, 'Ventas del día': MdAttachMoney, 'Stock bajo': MdInventory, 'Llamados de mesa': MdNotificationsActive }
+// Ventas por hora del día (barras simples).
+const HourBars = ({ data }) => {
+  const max = Math.max(1, ...data.map((d) => d.total))
+  const hours = data.filter((d, i) => d.total > 0 || (d.hour >= 10 && d.hour <= 23) || i === 0)
+  return (
+    <div className="hour-bars" role="img" aria-label="Ventas por hora">
+      {hours.map((d) => (
+        <div key={d.hour} className="hour-bar" title={`${d.hour}:00 · ${formatMoney(d.total)}`}>
+          <span style={{ height: `${Math.max(2, (d.total / max) * 100)}%` }} className={d.total ? '' : 'zero'} />
+          <small>{d.hour}</small>
+        </div>
+      ))}
+    </div>
+  )
+}
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches' }
 
 // Dashboard por rol. Cada etapa le suma indicadores (pedidos, mesas, caja, ventas, stock, llamados).
@@ -28,14 +43,27 @@ const Dashboard = () => {
       <div className="stack">
         <PageHead title={`${greeting()}, ${user.name}`} subtitle={`Operación de hoy en ${settings.businessName}.`} />
         <div className="kpis">
-          <Kpi label="Usuarios activos" value={k.users} icon={MdPeople} tone="brand" />
-          <Kpi label="Empleados" value={k.employees} icon={MdBadge} />
-          <Kpi label="Sucursales" value={k.sites} icon={MdPlace} />
-          <Kpi label="Bodegas" value={k.warehouses} icon={MdWarehouse} />
-          <Kpi label="Movimientos hoy" value={k.activityToday} icon={MdTimeline} tone="dark" />
-          <Kpi label="Productos activos" value={k.products} icon={MdRestaurantMenu} />
-          <Kpi label="Stock bajo" value={k.lowStock} icon={MdWarningAmber} tone={k.lowStock ? 'warn' : ''} />
-          <Kpi label="Agotados" value={k.outOfStock} icon={MdRemoveShoppingCart} tone={k.outOfStock ? 'bad' : ''} />
+          <Kpi label="Ventas de hoy" value={formatMoney(k.salesToday)} note={`${k.ordersToday} pedidos · ticket ${formatMoney(k.avgTicket)}`} icon={MdAttachMoney} tone="brand" />
+          <Kpi label="Propinas de hoy" value={formatMoney(k.tipsToday)} icon={MdLocalAtm} />
+          <Kpi label="Pedidos abiertos" value={k.openOrders} icon={MdReceiptLong} tone="dark" />
+          <Kpi label="Mesas ocupadas" value={`${k.occupiedTables}/${k.tables}`} icon={MdTableRestaurant} />
+          <Kpi label="Llamados de mesa" value={k.pendingCalls} icon={MdNotificationsActive} tone={k.pendingCalls ? 'warn' : ''} />
+          <Kpi label="Cajas abiertas" value={k.openSessions} icon={MdPointOfSale} />
+          <Kpi label="Por cobrar" value={formatMoney(k.receivables)} icon={MdRequestQuote} />
+          <Kpi label="Stock bajo / agotados" value={`${k.lowStock} / ${k.outOfStock}`} icon={MdWarningAmber} tone={k.outOfStock ? 'bad' : k.lowStock ? 'warn' : ''} />
+        </div>
+        <div className="grid grid-2-1">
+          <Card title="Ventas por hora" subtitle={`Hoy · descuentos ${formatMoney(k.discountsToday)} · cortesías ${formatMoney(k.courtesiesToday)}`} icon={<MdAttachMoney />}>
+            {k.ordersToday ? <HourBars data={data.salesByHour} /> : <Empty icon={<MdAttachMoney />}>Aún no hay ventas hoy.</Empty>}
+          </Card>
+          <Card title="En este momento" flush>
+            <ul className="list padded">
+              {data.calls.map((c) => <li key={`c${c.id}`}><span>{c.kind === 'cuenta' ? <MdReceipt /> : <MdRoomService />} <strong>{c.table}</strong> <small>{c.kind === 'cuenta' ? 'pide la cuenta' : 'llama al mesero'}</small></span><small>{since(c.createdAt)}</small></li>)}
+              {data.sessions.map((x) => <li key={`s${x.id}`}><span><MdLockOpen /> <strong>{x.register}</strong> <small>{x.number}{x.site ? ` · ${x.site}` : ''}</small></span><small>{since(x.openedAt)}</small></li>)}
+              {!data.calls.length && !data.sessions.length && <li><small className="muted">Sin llamados ni cajas abiertas.</small></li>}
+            </ul>
+            <div className="row-end" style={{ padding: '0 16px 14px' }}><Link to="/mesas" className="btn btn-sm">Mesas</Link><Link to="/caja" className="btn btn-sm">Caja</Link></div>
+          </Card>
         </div>
         {data.alerts?.length > 0 && (
           <Card title="Stock bajo y agotados" icon={<MdWarningAmber />} actions={<Link to="/inventario?tab=resumen" className="btn btn-sm">Ver inventario</Link>} flush>
@@ -57,10 +85,15 @@ const Dashboard = () => {
               </ul>
             )}
           </Card>
-          <Card title="Muy pronto en tu dashboard" subtitle="Llegan con la etapa 3: mesas, pedidos y caja.">
-            <ul className="list">
-              {data.upcoming.map((u) => { const Icon = UPCOMING_ICON[u] || MdTimeline; return <li key={u}><span><Icon /> {u}</span><Badge tone="muted">Pronto</Badge></li> })}
-            </ul>
+          <Card title="Tu establecimiento">
+            <dl className="order-totals" style={{ margin: 0 }}>
+              <div><dt><MdPeople /> Usuarios activos</dt><dd>{k.users}</dd></div>
+              <div><dt><MdBadge /> Empleados</dt><dd>{k.employees}</dd></div>
+              <div><dt><MdPlace /> Sucursales</dt><dd>{k.sites}</dd></div>
+              <div><dt><MdWarehouse /> Bodegas</dt><dd>{k.warehouses}</dd></div>
+              <div><dt><MdRestaurantMenu /> Productos activos</dt><dd>{k.products}</dd></div>
+              <div><dt><MdTimeline /> Movimientos hoy</dt><dd>{k.activityToday}</dd></div>
+            </dl>
           </Card>
         </div>
       </div>
@@ -68,15 +101,28 @@ const Dashboard = () => {
   }
 
   if (data.role === 'empleado') {
+    const ek = data.kpis
+    const pos = data.positions
+    const sells = pos.some((p) => ['mesero', 'cajero', 'host', 'bartender', 'barista'].includes(p))
+    const kitchen = pos.some((p) => ['cocina', 'bartender', 'barista'].includes(p))
+    const cashier = pos.includes('cajero')
     return (
       <div className="stack">
         <PageHead title={`${greeting()}, ${user.name}`} subtitle={[data.site, data.positions.map((p) => POSITION_LABELS[p]).join(' · ')].filter(Boolean).join(' · ')} />
         <div className="kpis">
-          <Kpi label="Mis movimientos hoy" value={data.kpis.myActivityToday} icon={MdTimeline} tone="brand" />
+          {sells && <Kpi label="Mis ventas de hoy" value={formatMoney(ek.mySalesToday)} note={`${ek.myOrdersToday} pedidos cobrados`} icon={MdAttachMoney} tone="brand" />}
+          {sells && <Kpi label="Mis propinas de hoy" value={formatMoney(ek.myTipsToday)} icon={MdLocalAtm} />}
+          {sells && <Kpi label="Mis pedidos abiertos" value={ek.myOpenOrders} icon={MdReceiptLong} tone="dark" />}
+          {sells && <Kpi label="Llamados de mesa" value={ek.pendingCalls} icon={MdNotificationsActive} tone={ek.pendingCalls ? 'warn' : ''} />}
+          {kitchen && <Kpi label="Comandas por empezar" value={ek.kitchenPending} icon={MdSoupKitchen} tone={ek.kitchenPending ? 'warn' : 'brand'} />}
+          {kitchen && <Kpi label="En preparación" value={ek.kitchenPreparing} icon={MdSoupKitchen} />}
+          <Kpi label="Mis movimientos hoy" value={ek.myActivityToday} icon={MdTimeline} />
         </div>
-        <Card title="Tu turno" subtitle="Aquí verás tus mesas, los pedidos por atender y los llamados de los clientes cuando se habilite la operación (etapa 3).">
-          <Empty icon={<MdTableRestaurant />}>Todavía no hay mesas configuradas.</Empty>
-        </Card>
+        <div className="row wrap" style={{ gap: 10 }}>
+          {sells && <Link to="/mesas" className="btn btn-primary"><MdTableRestaurant /> Ir a las mesas</Link>}
+          {kitchen && <Link to="/comandas" className="btn btn-primary"><MdSoupKitchen /> Ver comandas</Link>}
+          {cashier && <Link to="/caja" className="btn"><MdPointOfSale /> {data.session ? `Caja abierta: ${data.session.register} (${data.session.number})` : 'Abrir caja'}</Link>}
+        </div>
       </div>
     )
   }
@@ -84,7 +130,7 @@ const Dashboard = () => {
   return (
     <div className="stack">
       <PageHead title={`Bienvenido a ${settings.businessName}`} subtitle="Escanea el código QR de tu mesa para ver la carta y hacer tu pedido." />
-      <Card><Empty icon={<MdQrCode2 />}>La carta por QR llega en la etapa 3.</Empty></Card>
+      <Card><Empty icon={<MdQrCode2 />}>Escanea el QR de tu mesa con la cámara del celular.</Empty></Card>
     </div>
   )
 }

@@ -19,6 +19,13 @@ const CategoriesPage = lazy(() => import('./pages/inventario/CategoriesPage'))
 const InventoryPage = lazy(() => import('./pages/inventario/InventoryPage'))
 const PromotionsPage = lazy(() => import('./pages/inventario/PromotionsPage'))
 const NotificationsPage = lazy(() => import('./pages/notificaciones/NotificationsPage'))
+const TablesPage = lazy(() => import('./pages/operacion/TablesPage'))
+const OrdersPage = lazy(() => import('./pages/operacion/OrdersPage'))
+const OrderPage = lazy(() => import('./pages/operacion/OrderPage'))
+const KitchenPage = lazy(() => import('./pages/operacion/KitchenPage'))
+const CashPage = lazy(() => import('./pages/caja/CashPage'))
+const ReceivablesPage = lazy(() => import('./pages/caja/ReceivablesPage'))
+const MenuPage = lazy(() => import('./pages/public/MenuPage'))
 
 const OWNER = ['superadmin']
 const ADMIN = ['superadmin', 'admin']
@@ -49,12 +56,19 @@ const App = () => (
         <Suspense fallback={<Splash />}>
           <Routes>
             <Route path="/login" element={<LoginRoute />} />
+            <Route path="/carta/:token" element={<MenuPage />} />
             <Route element={<Protected><AppLayout /></Protected>}>
               <Route index element={<Dashboard />} />
               <Route path="perfil" element={<ProfilePage />} />
               <Route path="usuarios" element={<Protected roles={ADMIN}><UsersPage /></Protected>} />
               <Route path="sucursales" element={<Protected roles={ADMIN}><SitesPage /></Protected>} />
               <Route path="bitacora" element={<Protected roles={ADMIN}><LogbookPage /></Protected>} />
+              <Route path="mesas" element={<Protected roles={STAFF}><TablesPage /></Protected>} />
+              <Route path="pedidos" element={<Protected roles={STAFF}><OrdersPage /></Protected>} />
+              <Route path="pedidos/:id" element={<Protected roles={STAFF}><OrderPage /></Protected>} />
+              <Route path="comandas" element={<Protected roles={STAFF}><KitchenPage /></Protected>} />
+              <Route path="caja" element={<Protected roles={STAFF}><CashPage /></Protected>} />
+              <Route path="cuentas-por-cobrar" element={<Protected roles={STAFF}><ReceivablesPage /></Protected>} />
               <Route path="productos" element={<Protected roles={STAFF}><ProductsPage /></Protected>} />
               <Route path="productos/:id" element={<Protected roles={STAFF}><ProductDetail /></Protected>} />
               <Route path="categorias" element={<Protected roles={ADMIN}><CategoriesPage /></Protected>} />

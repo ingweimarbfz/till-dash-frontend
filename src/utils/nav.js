@@ -1,6 +1,7 @@
 import {
   MdDashboard, MdManageAccounts, MdSettings, MdMenuBook, MdPerson, MdPlace, MdPalette,
-  MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdInventory2, MdCategory, MdLocalOffer, MdBarChart, MdAccountBalance, MdQrCode2, MdNotificationsActive, MdRestaurantMenu
+  MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdInventory2, MdCategory, MdLocalOffer, MdBarChart, MdAccountBalance, MdQrCode2, MdNotificationsActive, MdRestaurantMenu,
+  MdSoupKitchen, MdRequestQuote
 } from 'react-icons/md'
 
 export const ROLE_LABELS = { superadmin: 'Super administrador', admin: 'Administrador', empleado: 'Empleado', cliente: 'Cliente' }
@@ -8,12 +9,16 @@ export const POSITION_LABELS = { mesero: 'Mesero', cajero: 'Cajero', cocina: 'Co
 export const POSITIONS = Object.keys(POSITION_LABELS)
 
 // Lo que llega en las próximas etapas se muestra deshabilitado con la etapa (soon).
+// positions: cargos del empleado que ven la opción (el administrador ve todas).
+const SELLERS = ['mesero', 'cajero', 'host', 'bartender', 'barista']
 const OPERATION = {
   title: 'Operación',
   items: [
-    { to: '/mesas', label: 'Mesas', icon: MdTableRestaurant, soon: 'etapa 3' },
-    { to: '/pedidos', label: 'Pedidos', icon: MdReceiptLong, soon: 'etapa 3' },
-    { to: '/caja', label: 'Caja', icon: MdPointOfSale, soon: 'etapa 3' }
+    { to: '/mesas', label: 'Mesas', icon: MdTableRestaurant, positions: SELLERS },
+    { to: '/pedidos', label: 'Pedidos', icon: MdReceiptLong, positions: SELLERS },
+    { to: '/comandas', label: 'Comandas', icon: MdSoupKitchen, positions: ['cocina', 'bartender', 'barista'] },
+    { to: '/caja', label: 'Caja', icon: MdPointOfSale, positions: ['cajero'] },
+    { to: '/cuentas-por-cobrar', label: 'Cuentas por cobrar', icon: MdRequestQuote, positions: ['cajero'] }
   ]
 }
 const CATALOG = {
@@ -59,11 +64,14 @@ const NAV = {
 
 export const ACCOUNT_NAV = [{ to: '/perfil', label: 'Mi perfil', icon: MdPerson }]
 
-export const navFor = (role) => NAV[role] || []
+// Menú del usuario: por rol y, para el empleado, por sus cargos.
+export const navFor = (role, positions = []) => (NAV[role] || []).map((s) => (role !== 'empleado' ? s : {
+  ...s, items: s.items.filter((i) => !i.positions || i.positions.some((p) => positions.includes(p)))
+})).filter((s) => s.items.length)
 
 // Título de la página actual para la barra superior.
-export const titleFor = (role, pathname) => {
-  for (const s of [...navFor(role), { title: 'Cuenta', items: ACCOUNT_NAV }]) {
+export const titleFor = (role, pathname, positions = []) => {
+  for (const s of [...navFor(role, positions), { title: 'Cuenta', items: ACCOUNT_NAV }]) {
     for (const i of s.items) {
       if (i.end ? pathname === i.to : pathname.startsWith(i.to)) return { section: s.title, title: i.label }
     }

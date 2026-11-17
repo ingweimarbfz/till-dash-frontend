@@ -9,6 +9,7 @@ import { Avatar } from '../components/ui'
 import { BrandLogo } from '../components/Logo'
 import SearchPalette, { useSearchShortcut } from '../components/SearchPalette'
 import StockAlerts from '../components/StockAlerts'
+import TableCalls from '../components/TableCalls'
 
 // Fecha corta: "Lun, 16 Nov 2026".
 const todayLabel = (() => {
@@ -96,8 +97,8 @@ const AppLayout = () => {
     ? <SiteSelector value={site} onChange={changeSite} />
     : user.site && user.role === 'empleado' && <span className="site-chip" title="Tu sucursal"><MdPlace /> {user.site.name}</span>
 
-  const sections = navFor(user.role)
-  const { section, title } = titleFor(user.role, pathname)
+  const sections = navFor(user.role, user.positions)
+  const { section, title } = titleFor(user.role, pathname, user.positions)
 
   return (
     <div className={`app${collapsed ? ' sidebar-off' : ''}`}>
@@ -178,6 +179,7 @@ const AppLayout = () => {
         </main>
         {searching && <SearchPalette onClose={() => setSearching(false)} />}
         {user.role !== 'cliente' && <StockAlerts key={site || 'all'} />}
+        {(admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host'].includes(p)))) && <TableCalls key={`calls-${site || 'all'}`} />}
       </div>
     </div>
   )
