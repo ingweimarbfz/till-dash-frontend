@@ -35,6 +35,7 @@ export const applyTheme = (t = DEFAULT_THEME) => {
   root.setProperty('--sidebar-line', mix(secondary, '#FFFFFF', 0.14))
   root.setProperty('--accent', accent)
   root.setProperty('--accent-50', mix(accent, '#FFFFFF', 0.88))
+  root.setProperty('--on-accent', contrastOn(accent) === '#FFFFFF' ? '#FFFFFF' : secondary)
   const font = t.fontFamily || DEFAULT_THEME.fontFamily
   root.setProperty('--font-family', `'${font}'`)
   const link = document.getElementById('app-font')
@@ -42,4 +43,24 @@ export const applyTheme = (t = DEFAULT_THEME) => {
   const dark = t.themeMode === 'oscuro' || (t.themeMode === 'sistema' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
   document.documentElement.dataset.theme = dark ? 'dark' : 'light'
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', primary)
+  setFavicon(t.faviconUrl || symbolDataUrl(primary, accent, secondary))
+}
+
+// El símbolo de TillDash+ como SVG con los colores del establecimiento, para la pestaña del navegador.
+export const symbolDataUrl = (primary, accent, secondary) => {
+  const on = contrastOn(primary)
+  const onAccent = contrastOn(accent) === '#FFFFFF' ? '#FFFFFF' : secondary
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect x="4" y="4" width="112" height="112" rx="30" fill="${primary}"/><rect x="20" y="30" width="64" height="15" rx="7.5" fill="${on}"/><path d="M40 40 H64 V86 L58 92 L52 86 L46 92 L40 86 Z" fill="${on}" stroke="${on}" stroke-width="3" stroke-linejoin="round"/><path d="M46 58 H58 M46 68 H58" stroke="${primary}" stroke-width="4" stroke-linecap="round"/><circle cx="91" cy="30" r="15" fill="${accent}" stroke="${primary}" stroke-width="4"/><path d="M91 22.5 V37.5 M83.5 30 H98.5" stroke="${onAccent}" stroke-width="5" stroke-linecap="round"/></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
+const setFavicon = (href) => {
+  let link = document.querySelector('link[rel="icon"][data-dynamic]')
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'icon'
+    link.dataset.dynamic = ''
+    document.head.appendChild(link)
+  }
+  if (link.href !== href) link.href = href
 }
