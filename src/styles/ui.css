@@ -1411,3 +1411,6 @@ tr.voided td strong { text-decoration: line-through; font-weight: 500; }
 .req-row { align-items: flex-start !important; gap: 12px; }
 .req-row input { height: 32px; font-size: 13px; }
 .text-bad { color: var(--bad); }
+.kpi-link { display: block; color: inherit; text-decoration: none; border-radius: var(--radius); }
+.kpi-link:hover .kpi { border-color: var(--brand); }
+.kpi-link .kpi { height: 100%; }

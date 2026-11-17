@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer } from 'react-icons/md'
+import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
@@ -52,6 +52,20 @@ const Dashboard = () => {
           <Kpi label="Por cobrar" value={formatMoney(k.receivables)} icon={MdRequestQuote} />
           <Kpi label="Stock bajo / agotados" value={`${k.lowStock} / ${k.outOfStock}`} icon={MdWarningAmber} tone={k.outOfStock ? 'bad' : k.lowStock ? 'warn' : ''} />
         </div>
+        {data.money && (
+          <div className="kpis">
+            <Link to="/finanzas?tab=fondos" className="kpi-link"><Kpi label="Dinero en fondos" value={formatMoney(data.money.funds)} icon={MdAccountBalance} note="General y sucursales" /></Link>
+            <Link to="/finanzas?tab=gastos" className="kpi-link"><Kpi label="Gastos del mes" value={formatMoney(data.money.expensesMonth)} icon={MdTrendingDown} /></Link>
+            <Link to="/caja?tab=solicitudes" className="kpi-link"><Kpi label="Solicitudes de caja" value={data.money.requests.length} icon={MdPanTool} tone={data.money.requests.length ? 'warn' : ''} note={data.money.requests.length ? 'Esperan tu aprobación' : 'Sin pendientes'} /></Link>
+            <Link to="/incidentes" className="kpi-link"><Kpi label="Incidentes abiertos" value={data.money.openIncidents} icon={MdReportProblem} tone={data.money.openIncidents ? 'bad' : ''} /></Link>
+          </div>
+        )}
+        {data.money?.requests.length > 0 && (
+          <div className="alert warn row-between">
+            <span><MdPanTool style={{ verticalAlign: -3 }} /> {data.money.requests.map((r) => `${r.register} pide ${formatMoney(r.amount)} (${r.reason})`).join(' · ')}</span>
+            <Link to="/caja?tab=solicitudes" className="btn btn-sm">Revisar</Link>
+          </div>
+        )}
         <div className="grid grid-2-1">
           <Card title="Ventas por hora" subtitle={`Hoy · descuentos ${formatMoney(k.discountsToday)} · cortesías ${formatMoney(k.courtesiesToday)}`} icon={<MdAttachMoney />}>
             {k.ordersToday ? <HourBars data={data.salesByHour} /> : <Empty icon={<MdAttachMoney />}>Aún no hay ventas hoy.</Empty>}
@@ -141,6 +155,47 @@ const Dashboard = () => {
           {sells && <Link to="/mesas" className="btn btn-primary"><MdTableRestaurant /> Ir a las mesas</Link>}
           {kitchen && <Link to="/comandas" className="btn btn-primary"><MdSoupKitchen /> Ver comandas</Link>}
           {cashier && <Link to="/caja" className="btn"><MdPointOfSale /> {data.session ? `Caja abierta: ${data.session.register} (${data.session.number})` : 'Abrir caja'}</Link>}
+        </div>
+        <div className="grid grid-2">
+          {sells && (
+            <Card title="Mis mesas y pedidos" icon={<MdTableRestaurant />} subtitle={data.myTables?.length ? `${data.myTables.length} abiertos` : null} flush>
+              {!data.myTables?.length ? <Empty icon={<MdTableRestaurant />}>No tienes pedidos abiertos.</Empty> : (
+                <ul className="list padded">{data.myTables.map((t) => (
+                  <li key={t.id}>
+                    <span><Link to={`/pedidos/${t.id}`}><strong>{t.name}</strong></Link>{t.alias && <small> · {t.alias}</small>} <small>{t.number} · hace {minutesLabel(t.minutes)}{t.guests ? ` · ${t.guests} pers.` : ''}</small></span>
+                    <span className="row" style={{ gap: 6 }}>
+                      {t.ready > 0 && <Badge tone="ok"><MdCheckCircle /> {t.ready} listo{t.ready === 1 ? '' : 's'}</Badge>}
+                      {t.cooking > 0 && <Badge><MdHourglassTop /> {t.cooking}</Badge>}
+                      {t.billRequested && <Badge tone="warn">Pide cuenta</Badge>}
+                      <b className="money">{formatMoney(t.total)}</b>
+                    </span>
+                  </li>
+                ))}</ul>
+              )}
+            </Card>
+          )}
+          {cashier && data.shift && (
+            <Card title="Mi turno de caja" icon={<MdPointOfSale />} subtitle={`${data.session.register} · ${data.session.number}`} actions={<Link to="/caja" className="btn btn-sm">Ir a caja</Link>}>
+              <dl className="order-totals" style={{ margin: 0 }}>
+                <div><dt>Ventas del turno</dt><dd>{formatMoney(data.shift.sales)} <small className="muted">({data.shift.orders})</small></dd></div>
+                <div><dt>Propinas</dt><dd>{formatMoney(data.shift.tips)}</dd></div>
+                <div><dt><MdShoppingCart /> Gastos del turno</dt><dd>−{formatMoney(data.shift.expenses)}</dd></div>
+                <div className="total"><dt>Efectivo esperado</dt><dd>{formatMoney(data.shift.expectedCash)}</dd></div>
+              </dl>
+              {data.shift.requests.length > 0 && <ul className="list" style={{ marginTop: 10 }}>{data.shift.requests.map((r) => <li key={r.number}><span><MdPanTool /> {r.number}</span><span className="row" style={{ gap: 6 }}><Badge tone={r.status === 'aprobada' ? 'ok' : r.status === 'rechazada' ? 'bad' : 'warn'}>{r.status}</Badge><b className="money">{formatMoney(r.amount)}</b></span></li>)}</ul>}
+            </Card>
+          )}
+          {kitchen && (
+            <Card title="Comandas" icon={<MdSoupKitchen />}>
+              {!ek.kitchenPending && !ek.kitchenPreparing ? <Empty icon={<MdSoupKitchen />}>Todo al día.</Empty> : (
+                <dl className="order-totals" style={{ margin: 0 }}>
+                  <div><dt>Por empezar</dt><dd>{ek.kitchenPending}</dd></div>
+                  <div><dt>En preparación</dt><dd>{ek.kitchenPreparing}</dd></div>
+                  {data.kitchenOldest !== null && data.kitchenOldest !== undefined && <div className="total"><dt>La más antigua espera</dt><dd className={data.kitchenOldest >= 20 ? 'text-bad' : ''}>{minutesLabel(data.kitchenOldest)}</dd></div>}
+                </dl>
+              )}
+            </Card>
+          )}
         </div>
       </div>
     )
