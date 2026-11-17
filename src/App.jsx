@@ -2,6 +2,8 @@ import React, { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { SettingsProvider } from './context/SettingsContext'
+import { PlanProvider, usePlan } from './context/PlanContext'
+import { FEATURE_OF } from './utils/nav'
 import AppLayout from './layout/AppLayout'
 import Login from './components/Login'
 import { Spinner } from './components/ui'
@@ -30,6 +32,9 @@ const KitchenPage = lazy(() => import('./pages/operacion/KitchenPage'))
 const CashPage = lazy(() => import('./pages/caja/CashPage'))
 const ReceivablesPage = lazy(() => import('./pages/caja/ReceivablesPage'))
 const MenuPage = lazy(() => import('./pages/public/MenuPage'))
+const MyPlanPage = lazy(() => import('./pages/MyPlanPage'))
+const PlatformApp = lazy(() => import('./platform/PlatformApp'))
+const PricingPage = lazy(() => import('./platform/PricingPage'))
 
 const OWNER = ['superadmin']
 const ADMIN = ['superadmin', 'admin']
@@ -44,6 +49,16 @@ const Protected = ({ roles, children }) => {
   if (loading) return <Splash />
   if (!user) return <Navigate to="/login" replace state={{ from: location }} />
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />
+  return <PlanGate>{children}</PlanGate>
+}
+
+// Pantalla no incluida en el plan: vuelve al inicio (el super administrador ve Mi plan).
+const PlanGate = ({ children }) => {
+  const { has } = usePlan()
+  const { user } = useAuth()
+  const { pathname } = useLocation()
+  const key = Object.keys(FEATURE_OF).find((p) => pathname === p || pathname.startsWith(`${p}/`))
+  if (key && !has(FEATURE_OF[key])) return <Navigate to={user.role === 'superadmin' ? '/mi-plan' : '/'} replace />
   return children
 }
 
@@ -61,9 +76,12 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<LoginRoute />} />
             <Route path="/carta/:token" element={<MenuPage />} />
-            <Route element={<Protected><AppLayout /></Protected>}>
+            <Route path="/precios" element={<PricingPage />} />
+            <Route path="/plataforma/*" element={<PlatformApp />} />
+            <Route element={<Protected><PlanProvider><AppLayout /></PlanProvider></Protected>}>
               <Route index element={<Dashboard />} />
               <Route path="perfil" element={<ProfilePage />} />
+              <Route path="mi-plan" element={<Protected roles={OWNER}><MyPlanPage /></Protected>} />
               <Route path="usuarios" element={<Protected roles={ADMIN}><UsersPage /></Protected>} />
               <Route path="sucursales" element={<Protected roles={ADMIN}><SitesPage /></Protected>} />
               <Route path="bitacora" element={<Protected roles={ADMIN}><LogbookPage /></Protected>} />

@@ -5,6 +5,7 @@ import { MdSearch, MdPersonAdd, MdPlace, MdWarehouse, MdManageAccounts, MdNorthE
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { navFor } from '../utils/nav'
+import { usePlan } from '../context/PlanContext'
 import { Spinner } from './ui'
 
 // Acciones rápidas por rol (aparecen sin escribir nada, y se filtran al escribir).
@@ -31,6 +32,7 @@ export const useSearchShortcut = (open) => {
 // (productos, mesas, órdenes por número…).
 const SearchPalette = ({ onClose }) => {
   const { user } = useAuth()
+  const { has } = usePlan()
   const navigate = useNavigate()
   const input = useRef(null)
   const listRef = useRef(null)
@@ -52,7 +54,7 @@ const SearchPalette = ({ onClose }) => {
 
   const groups = useMemo(() => {
     const t = norm(q.trim())
-    const pages = navFor(user.role, user.positions).flatMap((s) => s.items.filter((i) => !i.soon).map((i) => ({ id: i.to, title: i.label, subtitle: s.title, to: i.to, icon: i.icon })))
+    const pages = navFor(user.role, user.positions, has).flatMap((s) => s.items.filter((i) => !i.soon).map((i) => ({ id: i.to, title: i.label, subtitle: s.title, to: i.to, icon: i.icon })))
     const acts = (ACTIONS[user.role] || []).map((a) => ({ id: a.to, title: a.label, subtitle: a.hint, to: a.to, icon: a.icon, words: a.words }))
     const match = (x) => !t || norm(`${x.title} ${x.subtitle} ${x.words || ''}`).includes(t)
     const out = []

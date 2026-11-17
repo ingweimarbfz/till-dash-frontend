@@ -65,15 +65,23 @@ const NAV = {
 }
 
 export const ACCOUNT_NAV = [{ to: '/perfil', label: 'Mi perfil', icon: MdPerson }]
+const PLAN_NAV = { title: 'Cuenta', items: [{ to: '/mi-plan', label: 'Mi plan', icon: MdPerson }] }
 
-// Menú del usuario: por rol y, para el empleado, por sus cargos.
-export const navFor = (role, positions = []) => (NAV[role] || []).map((s) => (role !== 'empleado' ? s : {
-  ...s, items: s.items.filter((i) => !i.positions || i.positions.some((p) => positions.includes(p)))
+// Pantalla → módulo del plan que la habilita (lo que no aparece es del núcleo).
+export const FEATURE_OF = {
+  '/comandas': 'comandas', '/cuentas-por-cobrar': 'cuentas_por_cobrar', '/promociones': 'promociones', '/incidentes': 'incidentes',
+  '/reportes': 'reportes', '/finanzas': 'finanzas', '/bitacora': 'bitacora', '/notificaciones': 'telegram', '/configuracion/apariencia': 'marca'
+}
+
+// Menú del usuario: por rol, por los módulos de su plan y, para el empleado, por sus cargos.
+export const navFor = (role, positions = [], has = () => true) => (NAV[role] || []).map((s) => ({
+  ...s,
+  items: s.items.filter((i) => has(FEATURE_OF[i.to]) && (role !== 'empleado' || !i.positions || i.positions.some((p) => positions.includes(p))))
 })).filter((s) => s.items.length)
 
 // Título de la página actual para la barra superior.
 export const titleFor = (role, pathname, positions = []) => {
-  for (const s of [...navFor(role, positions), { title: 'Cuenta', items: ACCOUNT_NAV }]) {
+  for (const s of [...navFor(role, positions), { title: 'Cuenta', items: ACCOUNT_NAV }, PLAN_NAV]) {
     for (const i of s.items) {
       if (i.end ? pathname === i.to : pathname.startsWith(i.to)) return { section: s.title, title: i.label }
     }

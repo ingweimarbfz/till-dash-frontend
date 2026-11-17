@@ -825,12 +825,12 @@ small.visit-note { color: var(--ink-2) !important; display: flex !important; ali
 .price-table .input-prefix > span { font-size: 11px; }
 .price-table .input-prefix input { padding-left: 46px; min-width: 150px; }
 .price-table tr.muted td { color: var(--muted); }
-.usage { min-width: 70px; font-size: 13px; font-weight: 600; }
-.usage i { display: block; height: 4px; margin-top: 4px; border-radius: 4px; background: var(--brand); max-width: 100%; }
-.usage.near i { background: var(--warn); }
-.usage.full i { background: var(--bad); }
-.usage.full span { color: var(--bad); }
-.usage.near span { color: #B45309; }
+.usebar { min-width: 70px; white-space: nowrap; font-size: 13px; font-weight: 600; }
+.usebar i { display: block; height: 4px; margin-top: 4px; border-radius: 4px; background: var(--brand); max-width: 100%; }
+.usebar.near i { background: var(--warn); }
+.usebar.full i { background: var(--bad); }
+.usebar.full span { color: var(--bad); }
+.usebar.near span { color: #B45309; }
 .org-cell { min-width: 190px; }
 .plan-meter.near strong { color: #B45309; }
 .plan-meter.none .plan-meter-track { opacity: .5; }
