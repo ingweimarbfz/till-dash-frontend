@@ -100,7 +100,7 @@ const ProductsPage = () => {
     <div className="stack">
       <PageHead title="Productos" subtitle="La carta del establecimiento: precio, costo, foto y existencias. Las promociones vigentes cambian el precio solas.">
         {admin && <>
-          <button type="button" className="btn" onClick={() => setModal({ move: {} })}><MdMoveToInbox /> Entrada</button>
+          <button type="button" className="btn" onClick={() => setModal({ move: {} })} title="Entrada, ajuste o baja de varios productos a la vez"><MdMoveToInbox /> Entrada general</button>
           <button type="button" className="btn btn-primary" onClick={() => setModal({ product: {} })}><MdAdd /> Producto</button>
         </>}
       </PageHead>
@@ -132,6 +132,7 @@ const ProductsPage = () => {
                   <td className="hide-md"><small>{p.byWarehouse?.length ? p.byWarehouse.map((w) => `${w.name}: ${fmtQty(w.stock)}`).join(' · ') : '—'}</small></td>
                   <td className="right nowrap">
                     <button type="button" className="btn btn-ghost btn-icon" title="Ver ficha" aria-label={`Ver ${p.name}`} onClick={() => navigate(`/productos/${p.id}`)}><MdVisibility /></button>
+                    {admin && p.trackStock && <button type="button" className="btn btn-ghost btn-icon" title="Entrada de inventario" aria-label={`Entrada de ${p.name}`} onClick={() => setModal({ move: { productId: p.id } })}><MdMoveToInbox /></button>}
                     {admin && <button type="button" className="btn btn-ghost btn-icon" title="Editar" aria-label={`Editar ${p.name}`} onClick={() => setModal({ product: p })}><MdEdit /></button>}
                   </td>
                 </tr>
@@ -141,7 +142,7 @@ const ProductsPage = () => {
       </Card>
       {modal?.product && <ProductForm initial={modal.product.id ? modal.product : null} categories={categories} sites={sites} warehouses={warehouses} main={main}
         onClose={() => setModal(null)} onSaved={(p, was) => changed(was ? 'Producto actualizado' : 'Producto creado')} />}
-      {modal?.move && products && <MovementModal products={products} sites={sites} warehouses={warehouses} defaults={{ warehouseId: main ? String(main.id) : '' }} onClose={() => setModal(null)} onSaved={changed} />}
+      {modal?.move && products && <MovementModal products={products} sites={sites} warehouses={warehouses} defaults={{ warehouseId: main ? String(main.id) : '', productId: modal.move.productId }} onClose={() => setModal(null)} onSaved={changed} />}
       {toastNode}
     </div>
   )

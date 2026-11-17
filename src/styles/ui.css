@@ -1019,7 +1019,7 @@ input:invalid:not(:placeholder-shown):not(:focus) { border-color: var(--bad); }
 .thumb.sq:not(img) { display: inline-grid; place-items: center; font-size: 18px; }
 
 /* Avisos de stock bajo */
-.stock-toasts { position: fixed; right: 20px; bottom: 20px; z-index: 110; display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 32px)); }
+.stock-toasts { position: fixed; right: 20px; bottom: 20px; z-index: 70; display: flex; flex-direction: column; gap: 10px; width: min(360px, calc(100vw - 32px)); }
 .stock-toast { display: flex; align-items: flex-start; gap: 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 12px; padding: 12px 10px 12px 12px; box-shadow: var(--shadow-lg); font-size: 13.5px; animation: up .2s ease; }
 .stock-toast.out { border-left-color: var(--bad); }
 .stock-toast > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -1029,3 +1029,8 @@ input:invalid:not(:placeholder-shown):not(:focus) { border-color: var(--bad); }
 .stock-toast.out .stock-toast-icon { background: var(--bad-50); color: var(--bad); }
 .stock-toast.more { justify-content: space-between; align-items: center; border-left-color: var(--brand); }
 @media (max-width: 640px) { .stock-toasts { right: 16px; left: 16px; width: auto; bottom: 16px; } }
+
+/* Entrada por caja o canasta (TD-002) */
+.box-calc { display: inline-flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+.box-calc label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.box-calc input { width: 72px; text-align: right; }

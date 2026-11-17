@@ -81,20 +81,27 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
   const add = (id = pick) => {
     const p = products.find((x) => x.id === Number(id))
     if (!p) return
-    setItems((list) => [...list, { product: p, quantity: '', unitCost: p.cost }]); setPick('')
+    setItems((list) => (list.some((x) => x.product.id === p.id) ? list : [...list, { product: p, quantity: '', unitCost: p.cost, pack: false, boxes: '', perBox: '', boxCost: '' }])); setPick('')
   }
   useEffect(() => { if (defaults.productId) add(defaults.productId) }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const setItem = (n, k) => (v) => setItems((list) => list.map((x, j) => (j === n ? { ...x, [k]: v?.target ? v.target.value : v } : x)))
+  // Compra por caja o canasta: unidades = cajas × unidades por caja; costo unitario = costo de la caja ÷ unidades por caja.
+  const boxed = f.type === 'entrada'
+  const real = (i) => (boxed && i.pack
+    ? { quantity: Number(i.boxes) * Number(i.perBox), unitCost: Number(i.perBox) > 0 && i.boxCost !== '' ? Math.round((Number(i.boxCost) / Number(i.perBox)) * 100) / 100 : null }
+    : { quantity: Number(i.quantity), unitCost: i.unitCost })
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (!f.warehouseId) return setError('Selecciona la bodega.')
     if (!items.length) return setError('Agrega al menos un producto.')
-    const bad = items.find((i) => !(Number(i.quantity) !== 0 && Number.isFinite(Number(i.quantity))) || (f.type !== 'ajuste' && Number(i.quantity) < 0))
+    const badBox = items.find((i) => boxed && i.pack && !(Number(i.boxes) > 0 && Number(i.perBox) > 0 && Number.isInteger(Number(i.perBox))))
+    if (badBox) return setError(`Escribe cuántas cajas y cuántas unidades trae cada caja de ${badBox.product.name}.`)
+    const bad = items.find((i) => { const q = real(i).quantity; return !(q !== 0 && Number.isFinite(q)) || (f.type !== 'ajuste' && q < 0) })
     if (bad) return setError(`Revisa la cantidad de ${bad.product.name}.`)
     if (f.type !== 'entrada' && !f.note.trim()) return setError('Escribe el motivo.')
     setSaving(true)
     try {
-      const { data } = await api.post('/inventario/movimientos', { ...f, items: items.map((i) => ({ productId: i.product.id, quantity: Number(i.quantity), unitCost: f.type === 'entrada' ? i.unitCost : undefined })) })
+      const { data } = await api.post('/inventario/movimientos', { ...f, items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
       const w = warehouses.find((x) => x.id === Number(f.warehouseId))
       onSaved(`${MOVE_TITLES[f.type].split(' ')[0]} ${data.ref} registrada en ${w?.name}`, data.alerts)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
@@ -116,13 +123,33 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
         </div>
         {items.length > 0 && (
           <div className="table-wrap"><table className="table">
-            <thead><tr><th>Producto</th><th className="num">En bodega</th><th className="num">Cantidad</th>{f.type === 'entrada' && <th className="num">Costo unit.</th>}<th /></tr></thead>
+            <thead><tr><th>Producto</th><th className="num hide-sm">En bodega</th>{boxed && <th>Viene por</th>}<th className="num">Cantidad</th>{boxed && <th className="num">Costo</th>}<th /></tr></thead>
             <tbody>{items.map((i, n) => (
               <tr key={i.product.id}>
                 <td><strong>{i.product.name}</strong><small className="block">{i.product.category}</small></td>
-                <td className="num">{f.warehouseId ? fmtQty(stockIn(i.product, f.warehouseId), i.product.unit) : '—'}</td>
-                <td className="num"><input type="number" step="any" value={i.quantity} onChange={setItem(n, 'quantity')} placeholder={f.type === 'ajuste' ? '+/−' : '0'} style={{ width: 100, textAlign: 'right' }} aria-label={`Cantidad de ${i.product.name}`} /> <small>{UNIT_SHORT[i.product.unit]}</small></td>
-                {f.type === 'entrada' && <td className="num" style={{ minWidth: 130 }}><MoneyInput value={i.unitCost} onChange={setItem(n, 'unitCost')} aria-label={`Costo de ${i.product.name}`} /></td>}
+                <td className="num hide-sm">{f.warehouseId ? fmtQty(stockIn(i.product, f.warehouseId), i.product.unit) : '—'}</td>
+                {boxed && <td>
+                  <div className="seg" role="group" aria-label={`Presentación de ${i.product.name}`}>
+                    <button type="button" className={`btn btn-sm${!i.pack ? ' on' : ''}`} onClick={() => setItem(n, 'pack')(false)}>Unidad</button>
+                    <button type="button" className={`btn btn-sm${i.pack ? ' on' : ''}`} onClick={() => setItem(n, 'pack')(true)}>Caja</button>
+                  </div>
+                </td>}
+                {boxed && i.pack ? <>
+                  <td className="num">
+                    <div className="box-calc">
+                      <label><input type="number" min="1" step="1" value={i.boxes} onChange={setItem(n, 'boxes')} placeholder="0" aria-label={`Cajas de ${i.product.name}`} /> <small>cajas de</small></label>
+                      <label><input type="number" min="1" step="1" value={i.perBox} onChange={setItem(n, 'perBox')} placeholder="30" aria-label={`Unidades por caja de ${i.product.name}`} /> <small>{UNIT_SHORT[i.product.unit]}</small></label>
+                    </div>
+                    {real(i).quantity > 0 && <small className="block muted">= {fmtQty(real(i).quantity, i.product.unit)}</small>}
+                  </td>
+                  <td className="num" style={{ minWidth: 150 }}>
+                    <MoneyInput value={i.boxCost} onChange={setItem(n, 'boxCost')} placeholder="Costo de la caja" aria-label={`Costo por caja de ${i.product.name}`} />
+                    {real(i).unitCost !== null && <small className="block muted">{formatMoney(real(i).unitCost)} c/u</small>}
+                  </td>
+                </> : <>
+                  <td className="num"><input type="number" step="any" value={i.quantity} onChange={setItem(n, 'quantity')} placeholder={f.type === 'ajuste' ? '+/−' : '0'} style={{ width: 100, textAlign: 'right' }} aria-label={`Cantidad de ${i.product.name}`} /> <small>{UNIT_SHORT[i.product.unit]}</small></td>
+                  {boxed && <td className="num" style={{ minWidth: 150 }}><MoneyInput value={i.unitCost} onChange={setItem(n, 'unitCost')} aria-label={`Costo de ${i.product.name}`} /><small className="block muted">por {UNIT_SHORT[i.product.unit]}</small></td>}
+                </>}
                 <td className="right"><button type="button" className="btn btn-ghost btn-icon" aria-label="Quitar" onClick={() => setItems(items.filter((_, j) => j !== n))}><MdDelete /></button></td>
               </tr>
             ))}</tbody>
