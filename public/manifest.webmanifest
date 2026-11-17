@@ -1,0 +1,14 @@
+{
+  "name": "TillDash+",
+  "short_name": "TillDash+",
+  "description": "Mesas, pedidos, caja e inventario para tu restaurante, bar o discoteca",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1F2933",
+  "theme_color": "#E4572E",
+  "icons": [
+    { "src": "/app-icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/app-icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/app-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
