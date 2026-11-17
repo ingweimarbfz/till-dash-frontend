@@ -10,7 +10,7 @@ export const ITEM_STATUS = { pendiente: 'Pendiente', preparando: 'Preparando', l
 export const ITEM_TONE = { pendiente: 'muted', preparando: 'warn', listo: 'ok', entregado: '', anulado: 'bad' }
 export const AREA_LABEL = { cocina: 'Cocina', bar: 'Bar', barista: 'Barista', ninguna: 'Directo' }
 export const PAY_METHODS = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia', nequi: 'Nequi', daviplata: 'Daviplata', cuenta_por_cobrar: 'Cuenta por cobrar', otro: 'Otro' }
-export const TABLE_STATUS = { libre: 'Libre', ocupada: 'Ocupada', por_cobrar: 'Pidió la cuenta' }
+export const TABLE_STATUS = { libre: 'Libre', ocupada: 'Ocupada', por_cobrar: 'Pidió la cuenta', por_liberar: 'Cobrada, por liberar' }
 
 // Permisos por cargo, igual que el backend (src/ops.js).
 export const useCan = () => {

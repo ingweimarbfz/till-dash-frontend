@@ -38,7 +38,7 @@ const adminNav = (owner) => [
   {
     title: 'Administración',
     items: [
-      { to: '/reportes', label: 'Reportes', icon: MdBarChart, soon: 'etapa 4' },
+      { to: '/reportes', label: 'Reportes', icon: MdBarChart },
       { to: '/finanzas', label: 'Finanzas', icon: MdAccountBalance, soon: 'etapa 4' },
       { to: '/bitacora', label: 'Bitácora', icon: MdMenuBook },
       { to: '/sucursales', label: 'Sucursales y bodegas', icon: MdPlace },

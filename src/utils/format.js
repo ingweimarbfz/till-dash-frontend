@@ -33,3 +33,6 @@ export const formatShort = (n) => {
 }
 
 export const orDash = (value) => (value === null || value === undefined || value === '' ? '—' : value)
+
+// Duración en minutos legible: 45 min, 1 h 20 min.
+export const minutesLabel = (m) => (m >= 60 ? `${Math.floor(m / 60)} h ${String(Math.round(m % 60)).padStart(2, '0')} min` : `${Math.round(m)} min`)

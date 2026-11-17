@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  MdTableRestaurant, MdPeople, MdShoppingBag, MdSettings, MdCheck, MdRoomService, MdReceipt, MdDeliveryDining, MdLabel, MdSwapHoriz, MdAdd, MdLock, MdLockOpen
+  MdTableRestaurant, MdPeople, MdShoppingBag, MdSettings, MdCheck, MdRoomService, MdReceipt, MdDeliveryDining, MdLabel, MdSwapHoriz, MdAdd, MdLock, MdLockOpen, MdCleaningServices
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
@@ -25,6 +25,9 @@ const TableCard = ({ t, seller, cashOpen, onOpen, onAlias, onMove, onAttend }) =
         <span className="tbl-total">{formatMoney(t.order.total)}</span>
         <small className="tbl-meta">{t.order.number} · {since(t.order.openedAt)}</small>
         <small className="tbl-meta">{t.order.waiter}{t.order.ready ? <b className="tbl-ready"> · {t.order.ready} listo{t.order.ready === 1 ? '' : 's'}</b> : ''}</small>
+      </> : t.releasePending ? <>
+        <small className="tbl-meta">Cobrada {since(t.releasePending.since)}</small>
+        <span className="tbl-release"><MdCleaningServices /> Liberar mesa</span>
       </> : <span className="tbl-free">{cashOpen ? <><MdAdd /> Abrir mesa</> : <><MdLock /> Caja cerrada</>}</span>}
     </button>
     {t.calls.length > 0 && (
@@ -65,8 +68,12 @@ const TablesPage = () => {
   }, [params, data]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const seller = can('mesero', 'cajero', 'host', 'bartender', 'barista')
+  const release = async (t) => {
+    try { await api.post(`/mesas/${t.id}/liberar`); toast(`${t.name} quedó libre`); load() } catch (e) { toast(errorMessage(e), 'bad') }
+  }
   const open = (t) => {
     if (t.order) return navigate(`/pedidos/${t.order.id}`)
+    if (t.releasePending) return release(t)
     if (!seller) return toast('Tu cargo no abre mesas', 'bad')
     if (!data.cashOpen) return toast('Primero hay que abrir la caja del día', 'bad')
     setModal({ open: t })
@@ -99,7 +106,7 @@ const TablesPage = () => {
           <button type="button" className={`pchip${area === 'all' ? ' on' : ''}`} onClick={() => setArea('all')}>Todas</button>
           {areas.map((a) => <button key={a.id} type="button" className={`pchip${area === String(a.id) ? ' on' : ''}`} onClick={() => setArea(String(a.id))}>{a.name}</button>)}
         </div>
-        <div className="tbl-legend"><span className="lg libre" /> Libre {count('libre')}<span className="lg ocupada" /> Ocupada {count('ocupada')}<span className="lg por_cobrar" /> Cuenta {count('por_cobrar')}</div>
+        <div className="tbl-legend"><span className="lg libre" /> Libre {count('libre')}<span className="lg ocupada" /> Ocupada {count('ocupada')}<span className="lg por_cobrar" /> Cuenta {count('por_cobrar')}{count('por_liberar') > 0 && <><span className="lg por_liberar" /> Por liberar {count('por_liberar')}</>}</div>
       </div>
       {!data.tables.length ? (
         <Card><Empty icon={<MdTableRestaurant />}>{admin ? <>Aún no hay mesas en esta sucursal. Se crean en Configuración › Mesas y QR. <Link to="/configuracion/mesas" className="btn btn-sm btn-primary"><MdSettings /> Configurar mesas</Link></> : 'Aún no hay mesas en tu sucursal. Pide al administrador que las cree.'}</Empty></Card>

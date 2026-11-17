@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2 } from 'react-icons/md'
+import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
 import { Badge, Card, Empty, Kpi, PageHead, Spinner } from '../components/ui'
-import { formatDateTime, formatMoney, formatShort } from '../utils/format'
+import { formatDateTime, formatMoney, formatShort, minutesLabel } from '../utils/format'
 import { since } from './operacion/common'
 import { POSITION_LABELS } from '../utils/nav'
 
@@ -65,6 +65,25 @@ const Dashboard = () => {
             <div className="row-end" style={{ padding: '0 16px 14px' }}><Link to="/mesas" className="btn btn-sm">Mesas</Link><Link to="/caja" className="btn btn-sm">Caja</Link></div>
           </Card>
         </div>
+        {data.tableUsage && (
+          <Card title="Uso de las mesas" subtitle="Últimos 30 días · cuánto dura una mesa ocupada y cuánto vende por hora" icon={<MdTimer />}
+            actions={<Link to="/reportes?tab=mesas" className="btn btn-sm">Ver reporte</Link>}>
+            {!data.tableUsage.turns ? <Empty icon={<MdTimer />}>Cuando se cobren pedidos en mesa verás aquí el tiempo promedio de cada una.</Empty> : (
+              <div className="usage">
+                <div className="usage-kpis">
+                  <div><span>Tiempo promedio</span><strong>{minutesLabel(data.tableUsage.avgMinutes)}</strong><small>{data.tableUsage.turns} ocupaciones</small></div>
+                  <div><span>Venta por hora de mesa</span><strong>{formatMoney(data.tableUsage.perHour)}</strong><small>Mitad de las mesas: menos de {minutesLabel(data.tableUsage.medianMinutes)}</small></div>
+                </div>
+                <div className="usage-best">
+                  <span className="label-sm">Mejores puestos para reservar</span>
+                  <ol>{data.tableUsage.best.map((t) => (
+                    <li key={t.tableId}><strong>{t.name}</strong> <small className="muted">{t.area}</small><span className="grow" /><small>{minutesLabel(t.avgMinutes)}</small><b className="money">{formatMoney(t.perHour)}/h</b></li>
+                  ))}</ol>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
         {data.alerts?.length > 0 && (
           <Card title="Stock bajo y agotados" icon={<MdWarningAmber />} actions={<Link to="/inventario?tab=resumen" className="btn btn-sm">Ver inventario</Link>} flush>
             <ul className="list padded">
