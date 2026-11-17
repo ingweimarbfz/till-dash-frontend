@@ -25,22 +25,24 @@ export const DEFAULT_THEME = { colors: { primary: '#E4572E', secondary: '#1F2933
 export const applyTheme = (t = DEFAULT_THEME) => {
   const { primary, secondary, accent } = { ...DEFAULT_THEME.colors, ...(t.colors || {}) }
   const root = document.documentElement.style
+  const dark = t.themeMode === 'oscuro' || (t.themeMode === 'sistema' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
+  // Tonos suaves: sobre blanco en modo claro y sobre la superficie oscura en modo oscuro.
+  const base = dark ? '#1A2128' : '#FFFFFF'
   root.setProperty('--brand', primary)
   root.setProperty('--brand-600', mix(primary, '#000000', 0.15))
-  root.setProperty('--brand-50', mix(primary, '#FFFFFF', 0.92))
-  root.setProperty('--brand-100', mix(primary, '#FFFFFF', 0.8))
+  root.setProperty('--brand-50', mix(primary, base, dark ? 0.84 : 0.92))
+  root.setProperty('--brand-100', mix(primary, base, dark ? 0.68 : 0.8))
   root.setProperty('--on-brand', contrastOn(primary))
   root.setProperty('--sidebar', secondary)
   root.setProperty('--sidebar-2', mix(secondary, '#FFFFFF', 0.07))
   root.setProperty('--sidebar-line', mix(secondary, '#FFFFFF', 0.14))
   root.setProperty('--accent', accent)
-  root.setProperty('--accent-50', mix(accent, '#FFFFFF', 0.88))
+  root.setProperty('--accent-50', mix(accent, base, dark ? 0.84 : 0.88))
   root.setProperty('--on-accent', contrastOn(accent) === '#FFFFFF' ? '#FFFFFF' : secondary)
   const font = t.fontFamily || DEFAULT_THEME.fontFamily
   root.setProperty('--font-family', `'${font}'`)
   const link = document.getElementById('app-font')
   if (link && !link.href.includes(encodeURIComponent(font).replace(/%20/g, '+'))) link.href = FONT_URL(font)
-  const dark = t.themeMode === 'oscuro' || (t.themeMode === 'sistema' && window.matchMedia?.('(prefers-color-scheme: dark)').matches)
   document.documentElement.dataset.theme = dark ? 'dark' : 'light'
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', primary)
   setFavicon(t.faviconUrl || symbolDataUrl(primary, accent, secondary))
