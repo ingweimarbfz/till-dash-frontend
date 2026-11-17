@@ -7,6 +7,7 @@ import { FEATURE_OF } from './utils/nav'
 import AppLayout from './layout/AppLayout'
 import Login from './components/Login'
 import { Spinner } from './components/ui'
+import LegalGate from './components/legal/LegalGate'
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
@@ -35,6 +36,7 @@ const MenuPage = lazy(() => import('./pages/public/MenuPage'))
 const MyPlanPage = lazy(() => import('./pages/MyPlanPage'))
 const PlatformApp = lazy(() => import('./platform/PlatformApp'))
 const PricingPage = lazy(() => import('./platform/PricingPage'))
+const LegalPage = lazy(() => import('./components/legal/LegalGate').then((m) => ({ default: m.LegalPage })))
 
 const OWNER = ['superadmin']
 const ADMIN = ['superadmin', 'admin']
@@ -78,9 +80,10 @@ const App = () => (
             <Route path="/carta/:token" element={<MenuPage />} />
             <Route path="/precios" element={<PricingPage />} />
             <Route path="/plataforma/*" element={<PlatformApp />} />
-            <Route element={<Protected><PlanProvider><AppLayout /></PlanProvider></Protected>}>
+            <Route element={<Protected><LegalGate><PlanProvider><AppLayout /></PlanProvider></LegalGate></Protected>}>
               <Route index element={<Dashboard />} />
               <Route path="perfil" element={<ProfilePage />} />
+              <Route path="legal/:kind" element={<LegalPage />} />
               <Route path="mi-plan" element={<Protected roles={OWNER}><MyPlanPage /></Protected>} />
               <Route path="usuarios" element={<Protected roles={ADMIN}><UsersPage /></Protected>} />
               <Route path="sucursales" element={<Protected roles={ADMIN}><SitesPage /></Protected>} />

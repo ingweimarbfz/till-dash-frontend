@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { MdAdd, MdEdit, MdStorefront, MdWorkspacePremium, MdInbox, MdTrendingUp, MdHourglassTop, MdEventRepeat, MdCheck, MdClose, MdPhone, MdStar } from 'react-icons/md'
+import { MdAdd, MdEdit, MdStorefront, MdWorkspacePremium, MdInbox, MdTrendingUp, MdHourglassTop, MdEventRepeat, MdCheck, MdClose, MdPhone, MdStar, MdGavel } from 'react-icons/md'
 import papi from './api'
 import { errorMessage } from '../api/client'
 import { Badge, Card, Empty, Field, Kpi, Modal, PageHead, Spinner, useToast } from '../components/ui'
 import { formatDate, formatDateTime } from '../utils/format'
+import { OrgLegalModal } from './legalPages'
 import { CountryLabel, CountrySelect, Flag, FEATURE_SHORT, annualPrice, limitText, moneyIn } from '../utils/countries'
 
 const GROUPS = { operacion: 'Operación', catalogo: 'Catálogo', clientes: 'Clientes', control: 'Control', marca: 'Marca' }
@@ -338,6 +339,7 @@ export const OrgsPage = () => {
   const [orgs, setOrgs] = useState(null)
   const [plans, setPlans] = useState([])
   const [modal, setModal] = useState(null)
+  const [legal, setLegal] = useState(null)
   const [q, setQ] = useState('')
   const [toast, toastNode] = useToast()
   const load = useCallback(() => {
@@ -368,12 +370,13 @@ export const OrgsPage = () => {
                 <td><UsageBar used={o.usage.sites} max={o.limits?.sites} /></td>
                 <td className="right num">{o.monthly === null ? '—' : moneyIn(o.monthly, o.currency, o.country?.locale)}</td>
                 <td>{formatDate(o.renewalDate)}</td>
-                <td><button type="button" className="btn btn-ghost btn-icon" title="Editar" aria-label={`Editar ${o.name}`} onClick={() => setModal(o)}><MdEdit /></button></td>
+                <td className="nowrap"><button type="button" className="btn btn-ghost btn-icon" title="Documentos legales" aria-label={`Documentos legales de ${o.name}`} onClick={() => setLegal(o)}><MdGavel /></button><button type="button" className="btn btn-ghost btn-icon" title="Editar" aria-label={`Editar ${o.name}`} onClick={() => setModal(o)}><MdEdit /></button></td>
               </tr>
             ))}</tbody>
           </table></div>
         )}
       </Card>
+      {legal && <OrgLegalModal org={legal} onClose={() => setLegal(null)} />}
       {modal && <OrgForm initial={modal.id ? modal : null} cat={cat} plans={plans} onClose={() => setModal(null)} onSaved={(d, e) => { setModal(null); load(); toast(e ? 'Establecimiento actualizado' : `Establecimiento ${d.name} creado. Su administrador entra con el usuario ${d.admin?.username} y su documento.`) }} />}
       {toastNode}
     </div>

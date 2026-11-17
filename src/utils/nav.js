@@ -65,7 +65,7 @@ const NAV = {
 }
 
 export const ACCOUNT_NAV = [{ to: '/perfil', label: 'Mi perfil', icon: MdPerson }]
-const PLAN_NAV = { title: 'Cuenta', items: [{ to: '/mi-plan', label: 'Mi plan', icon: MdPerson }] }
+const PLAN_NAV = { title: 'Cuenta', items: [{ to: '/mi-plan', label: 'Mi plan', icon: MdPerson }, { to: '/legal', label: 'Documentos legales', icon: MdPerson }] }
 
 // Pantalla → módulo del plan que la habilita (lo que no aparece es del núcleo).
 export const FEATURE_OF = {

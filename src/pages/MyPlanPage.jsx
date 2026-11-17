@@ -1,10 +1,41 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { MdCheckCircle, MdRemoveCircleOutline, MdWorkspacePremium, MdStar, MdSend, MdEventRepeat, MdHourglassTop } from 'react-icons/md'
+import { Link } from 'react-router-dom'
+import { MdCheckCircle, MdRemoveCircleOutline, MdWorkspacePremium, MdStar, MdSend, MdEventRepeat, MdHourglassTop, MdGavel, MdDescription } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { Badge, Card, Empty, Field, Modal, PageHead, Spinner, useToast } from '../components/ui'
 import { formatDate, formatDateTime } from '../utils/format'
 import { Flag, limitText, moneyIn } from '../utils/countries'
 import { usePlan } from '../context/PlanContext'
+
+// Contrato y acuerdo de datos firmados, y los términos que acepta cada usuario.
+const LegalCard = () => {
+  const [st, setSt] = useState(null)
+  useEffect(() => { api.get('/legal/estado').then(({ data }) => setSt(data)).catch(() => setSt(false)) }, [])
+  if (!st) return null
+  return (
+    <Card title="Documentos legales" icon={<MdGavel />} subtitle="Firmados electrónicamente (Ley 527 de 1999). Ábrelos para imprimirlos o guardarlos en PDF.">
+      <div className="legal-list">
+        {st.documents.map((d) => {
+          const c = d.signatures.find((x) => x.party === 'cliente')
+          const p = d.signatures.find((x) => x.party === 'proveedor')
+          return (
+            <div key={d.kind} className="legal-row">
+              <MdDescription />
+              <div className="grow"><strong>{d.title}</strong><small>{d.code} · versión {d.version}{c ? ` · firmado por ${c.signerName} el ${formatDate(c.signedAt)}` : ''}</small></div>
+              <Badge tone={p ? 'brand' : 'warn'}>{p ? 'Firmado por ambas partes' : 'Falta la firma de TillDash+'}</Badge>
+              <Link className="btn btn-sm" to={`/legal/${d.kind}`}>Ver / PDF</Link>
+            </div>
+          )
+        })}
+        <div className="legal-row">
+          <MdDescription />
+          <div className="grow"><strong>Términos y condiciones de uso</strong><small>TD-LEG-003 · los acepta cada usuario al entrar por primera vez</small></div>
+          <Link className="btn btn-sm" to="/legal/terminos">Ver</Link>
+        </div>
+      </div>
+    </Card>
+  )
+}
 
 const LIMITS = [
   ['sites', 'Sucursales'], ['admins', 'Administradores'], ['employees', 'Empleados'],
@@ -139,6 +170,7 @@ const MyPlanPage = () => {
           })}
         </div>
       </Card>
+      <LegalCard />
       {changing && <ChangeModal current={d.org} onClose={() => setChanging(false)} onSent={() => { setChanging(false); load(); refresh(); toast('Solicitud enviada. TillDash+ te contactará pronto.') }} />}
       {toastNode}
     </div>

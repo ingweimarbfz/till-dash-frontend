@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { NavLink, Navigate, Route, Routes, useLocation } from 'react-router-dom'
-import { MdDashboard, MdWorkspacePremium, MdTune, MdPublic, MdStorefront, MdInbox, MdLogout, MdMenu, MdPerson, MdLock, MdErrorOutline, MdOpenInNew } from 'react-icons/md'
+import { MdDashboard, MdWorkspacePremium, MdTune, MdPublic, MdStorefront, MdInbox, MdLogout, MdMenu, MdPerson, MdLock, MdErrorOutline, MdOpenInNew, MdGavel } from 'react-icons/md'
 import papi, { pltToken } from './api'
 import { errorMessage } from '../api/client'
 import { Spinner } from '../components/ui'
 import { BrandLogo } from '../components/Logo'
 import { SummaryPage, PlansPage, FeaturesPage, CountriesPage, OrgsPage, RequestsPage } from './pages'
+import { ProviderPage, OrgLegalDoc } from './legalPages'
 
 const NAV = [
   { to: '/plataforma', label: 'Resumen', icon: MdDashboard, end: true, el: SummaryPage },
@@ -13,7 +14,8 @@ const NAV = [
   { to: '/plataforma/establecimientos', label: 'Establecimientos', icon: MdStorefront, el: OrgsPage },
   { to: '/plataforma/solicitudes', label: 'Solicitudes', icon: MdInbox, el: RequestsPage },
   { to: '/plataforma/paises', label: 'Países y monedas', icon: MdPublic, el: CountriesPage },
-  { to: '/plataforma/funcionalidades', label: 'Funcionalidades', icon: MdTune, el: FeaturesPage }
+  { to: '/plataforma/funcionalidades', label: 'Funcionalidades', icon: MdTune, el: FeaturesPage },
+  { to: '/plataforma/proveedor', label: 'Proveedor y legales', icon: MdGavel, el: ProviderPage }
 ]
 
 const PlatformLogin = ({ onIn }) => {
@@ -67,7 +69,7 @@ const PlatformApp = () => {
   useEffect(() => setOpen(false), [pathname])
   if (me === undefined) return <div className="splash"><Spinner /></div>
   if (!me) return <PlatformLogin onIn={setMe} />
-  const cur = [...NAV].reverse().find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to))) || NAV[0]
+  const cur = pathname.startsWith('/plataforma/legal/') ? { label: 'Documento legal' } : [...NAV].reverse().find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to))) || NAV[0]
   return (
     <div className="app plt">
       <aside className={`sidebar${open ? ' open' : ''}`}>
@@ -104,6 +106,7 @@ const PlatformApp = () => {
         <main className="content">
           <Routes>
             {NAV.map((n) => <Route key={n.to} path={n.to.replace('/plataforma', '') || '/'} element={<n.el />} />)}
+            <Route path="/legal/:orgId/:kind" element={<OrgLegalDoc />} />
             <Route path="*" element={<Navigate to="/plataforma" replace />} />
           </Routes>
         </main>
