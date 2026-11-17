@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  MdArrowBack, MdSearch, MdAdd, MdRemove, MdSend, MdReceipt, MdPointOfSale, MdBlock, MdCardGiftcard, MdSwapHoriz, MdPrint, MdDelete, MdNotes, MdPeople, MdClose
+  MdArrowBack, MdSearch, MdAdd, MdRemove, MdSend, MdReceipt, MdPointOfSale, MdBlock, MdCardGiftcard, MdSwapHoriz, MdPrint, MdDelete, MdNotes, MdClose, MdLabel
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useSettings } from '../../context/SettingsContext'
@@ -9,6 +9,7 @@ import { Badge, Card, Empty, Field, Modal, Spinner, useToast } from '../../compo
 import { formatDateTime, formatMoney } from '../../utils/format'
 import { AREA_LABEL, ITEM_STATUS, ITEM_TONE, ORDER_STATUS, ORDER_TONE, PAY_METHODS, Qty, since, useCan } from './common'
 import ChargeModal from './ChargeModal'
+import { AliasModal, MoveModal } from './tableModals'
 
 // Motivo obligatorio para cortesías y anulaciones.
 const ReasonModal = ({ title, label, placeholder, confirm, danger, onClose, onConfirm }) => {
@@ -28,21 +29,6 @@ const ReasonModal = ({ title, label, placeholder, confirm, danger, onClose, onCo
         <Field label={label} htmlFor="rr" required><input id="rr" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={placeholder} autoFocus /></Field>
         {error && <div className="alert bad">{error}</div>}
       </form>
-    </Modal>
-  )
-}
-
-const MoveModal = ({ order, onClose, onMoved }) => {
-  const [tables, setTables] = useState(null)
-  const [error, setError] = useState('')
-  useEffect(() => { api.get('/mesas', { params: { sede: order.siteId } }).then(({ data }) => setTables(data.tables.filter((t) => t.status === 'libre'))).catch((e) => setError(errorMessage(e))) }, [order.siteId])
-  const move = async (t) => { try { onMoved(await api.put(`/pedidos/${order.id}`, { tableId: t.id }), t) } catch (e) { setError(errorMessage(e)) } }
-  return (
-    <Modal title="Mover a otra mesa" onClose={onClose}>
-      {error && <div className="alert bad">{error}</div>}
-      {!tables ? <Spinner /> : !tables.length ? <Empty>No hay mesas libres.</Empty> : (
-        <div className="tbl-grid sm">{tables.map((t) => <button key={t.id} type="button" className="tbl tbl-libre tbl-main" onClick={() => move(t)}><strong>{t.name}</strong><small><MdPeople /> {t.seats}</small></button>)}</div>
-      )}
     </Modal>
   )
 }
@@ -119,13 +105,14 @@ const OrderPage = () => {
         <div className="row" style={{ gap: 10, alignItems: 'center' }}>
           <button type="button" className="btn btn-ghost btn-icon" onClick={back} aria-label="Volver"><MdArrowBack /></button>
           <div>
-            <h1 className="page-title" style={{ margin: 0 }}>{o.table || o.typeLabel} <small className="muted">· {o.number}</small> <Badge tone={ORDER_TONE[o.status]}>{ORDER_STATUS[o.status]}</Badge>{o.billRequestedAt && open && <Badge tone="warn">Pidió la cuenta</Badge>}</h1>
+            <h1 className="page-title" style={{ margin: 0 }}>{o.table || o.typeLabel} <small className="muted">· {o.number}</small> <Badge tone={ORDER_TONE[o.status]}>{ORDER_STATUS[o.status]}</Badge>{o.alias && <button type="button" className="tbl-alias as-btn" onClick={() => open && seller && setModal('alias')} title="Editar alias"><MdLabel /> {o.alias}</button>}{o.billRequestedAt && open && <Badge tone="warn">Pidió la cuenta</Badge>}</h1>
             <small className="muted">{[o.waiter?.name, o.guests && `${o.guests} personas`, o.customerName, `abierto ${since(o.openedAt)}`, o.site].filter(Boolean).join(' · ')}</small>
           </div>
         </div>
         {open && <div className="row-end wrap">
           <button type="button" className="btn btn-sm" onClick={() => printBill(o, settings)} disabled={!live.length}><MdPrint /> Precuenta</button>
-          {o.type === 'mesa' && seller && <button type="button" className="btn btn-sm" onClick={() => setModal('move')}><MdSwapHoriz /> Mover</button>}
+          {o.type === 'mesa' && seller && <button type="button" className="btn btn-sm" onClick={() => setModal('move')}><MdSwapHoriz /> Trasladar</button>}
+          {o.type === 'mesa' && seller && !o.alias && <button type="button" className="btn btn-sm" onClick={() => setModal('alias')}><MdLabel /> Alias</button>}
           <button type="button" className="btn btn-sm" onClick={() => act(() => api.post(`/pedidos/${o.id}/cuenta`, { cancel: Boolean(o.billRequestedAt) }), o.billRequestedAt ? 'Se quitó la solicitud de cuenta' : 'Cuenta pedida: la caja ya la ve')}><MdReceipt /> {o.billRequestedAt ? 'Quitar cuenta' : 'Pedir cuenta'}</button>
           {cashier && <button type="button" className="btn btn-sm btn-danger-ghost" onClick={() => setModal('void')}><MdBlock /> Anular</button>}
           {cashier && <button type="button" className="btn btn-primary" onClick={() => setModal('charge')} disabled={!live.length || cart.length > 0} title={cart.length ? 'Envía o borra los productos sin enviar' : ''}><MdPointOfSale /> Cobrar {formatMoney(o.total)}</button>}
@@ -218,7 +205,8 @@ const OrderPage = () => {
       </div>
 
       {modal === 'charge' && <ChargeModal order={o} onClose={() => setModal(null)} onCharged={() => { setModal(null); navigate(o.type === 'mesa' ? '/mesas' : '/pedidos') }} />}
-      {modal === 'move' && <MoveModal order={o} onClose={() => setModal(null)} onMoved={({ data }, t) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(`Pedido movido a ${t.name}`) }} />}
+      {modal === 'move' && <MoveModal order={o} fromName={o.table} onClose={() => setModal(null)} onMoved={(data, t) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(`Pedido trasladado a ${t.name}`) }} />}
+      {modal === 'alias' && <AliasModal order={o} tableName={o.table || o.number} onClose={() => setModal(null)} onSaved={(data) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(data.alias ? `Alias: ${data.alias}` : 'Alias quitado') }} />}
       {modal === 'void' && <ReasonModal title={`Anular el pedido ${o.number}`} label="Motivo" placeholder="Ej. el cliente se fue sin consumir" confirm="Anular pedido" danger onClose={() => setModal(null)} onConfirm={(reason) => act(() => api.post(`/pedidos/${o.id}/anular`, { reason }), 'Pedido anulado: el inventario volvió a la bodega')} />}
       {modal?.voidItem && <ReasonModal title={`Anular ${modal.voidItem.name}`} label="Motivo" placeholder="Ej. el cliente cambió de opinión" confirm="Anular" danger onClose={() => setModal(null)} onConfirm={(reason) => act(() => api.post(`/pedidos/${o.id}/items/${modal.voidItem.id}/anular`, { reason }), 'Producto anulado')} />}
       {modal?.courtesy && <ReasonModal title={`Cortesía: ${modal.courtesy.name}`} label="Motivo de la cortesía" placeholder="Ej. demora en la cocina, cliente frecuente" confirm="Dar cortesía" onClose={() => setModal(null)} onConfirm={(reason) => act(() => api.post(`/pedidos/${o.id}/items/${modal.courtesy.id}/cortesia`, { reason }), 'Cortesía aplicada')} />}

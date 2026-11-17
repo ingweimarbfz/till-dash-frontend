@@ -44,6 +44,7 @@ const adminNav = (owner) => [
       { to: '/usuarios', label: 'Usuarios', icon: MdManageAccounts },
       { to: '/notificaciones', label: 'Notificaciones', icon: MdNotificationsActive },
       { to: '/configuracion', label: 'Configuración', icon: MdSettings, end: true },
+      { to: '/configuracion/mesas', label: 'Mesas y QR', icon: MdQrCode2 },
       ...(owner ? [{ to: '/configuracion/apariencia', label: 'Apariencia', icon: MdPalette }] : [])
     ]
   }

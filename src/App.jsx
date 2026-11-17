@@ -20,6 +20,7 @@ const InventoryPage = lazy(() => import('./pages/inventario/InventoryPage'))
 const PromotionsPage = lazy(() => import('./pages/inventario/PromotionsPage'))
 const NotificationsPage = lazy(() => import('./pages/notificaciones/NotificationsPage'))
 const TablesPage = lazy(() => import('./pages/operacion/TablesPage'))
+const TablesConfigPage = lazy(() => import('./pages/operacion/TablesConfigPage'))
 const OrdersPage = lazy(() => import('./pages/operacion/OrdersPage'))
 const OrderPage = lazy(() => import('./pages/operacion/OrderPage'))
 const KitchenPage = lazy(() => import('./pages/operacion/KitchenPage'))
@@ -76,6 +77,7 @@ const App = () => (
               <Route path="promociones" element={<Protected roles={ADMIN}><PromotionsPage /></Protected>} />
               <Route path="notificaciones" element={<Protected roles={ADMIN}><NotificationsPage /></Protected>} />
               <Route path="configuracion" element={<Protected roles={ADMIN}><SettingsPage /></Protected>} />
+              <Route path="configuracion/mesas" element={<Protected roles={ADMIN}><TablesConfigPage /></Protected>} />
               <Route path="configuracion/apariencia" element={<Protected roles={OWNER}><AppearancePage /></Protected>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

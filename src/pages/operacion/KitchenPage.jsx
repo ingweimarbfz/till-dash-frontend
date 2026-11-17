@@ -50,7 +50,7 @@ const KitchenPage = () => {
                   <div><strong>{t.table || t.type}</strong> <small>{t.number}</small></div>
                   <span className="kds-time">{wait} min</span>
                 </header>
-                <small className="muted">{[AREA_LABEL[t.area], t.waiter, t.customer].filter(Boolean).join(' · ')}</small>
+                <small className="muted">{[t.alias && `“${t.alias}”`, AREA_LABEL[t.area], t.waiter, t.customer].filter(Boolean).join(' · ')}</small>
                 <ul>{t.items.map((i) => (
                   <li key={i.id} className={i.status}>
                     <button type="button" className="kds-item" onClick={() => mark([i.id], i.status === 'pendiente' ? 'preparando' : i.status === 'preparando' ? 'listo' : 'preparando')} title="Toca para avanzar el estado">

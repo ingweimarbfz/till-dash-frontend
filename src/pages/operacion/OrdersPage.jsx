@@ -48,7 +48,7 @@ const OrdersPage = () => {
             <tbody>{rows.map((o) => (
               <tr key={o.id} onClick={() => navigate(`/pedidos/${o.id}`)} style={{ cursor: 'pointer' }}>
                 <td><strong>{o.number}</strong>{o.site && <small className="block muted">{o.site}</small>}</td>
-                <td>{o.table || o.typeLabel}{o.customerName && <small className="block muted">{o.customerName}</small>}</td>
+                <td>{o.table || o.typeLabel}{(o.alias || o.customerName) && <small className="block muted">{[o.alias, o.customerName].filter(Boolean).join(' · ')}</small>}</td>
                 <td className="hide-sm">{o.waiter?.name || '—'}</td>
                 <td className="hide-md"><small>{o.status === 'abierto' ? since(o.openedAt) : formatDateTime(o.openedAt)}</small></td>
                 <td className="num">{o.itemCount}</td>
