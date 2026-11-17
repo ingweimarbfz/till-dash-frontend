@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2 } from 'react-icons/md'
+import { MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2 } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
@@ -33,7 +33,22 @@ const Dashboard = () => {
           <Kpi label="Sucursales" value={k.sites} icon={MdPlace} />
           <Kpi label="Bodegas" value={k.warehouses} icon={MdWarehouse} />
           <Kpi label="Movimientos hoy" value={k.activityToday} icon={MdTimeline} tone="dark" />
+          <Kpi label="Productos activos" value={k.products} icon={MdRestaurantMenu} />
+          <Kpi label="Stock bajo" value={k.lowStock} icon={MdWarningAmber} tone={k.lowStock ? 'warn' : ''} />
+          <Kpi label="Agotados" value={k.outOfStock} icon={MdRemoveShoppingCart} tone={k.outOfStock ? 'bad' : ''} />
         </div>
+        {data.alerts?.length > 0 && (
+          <Card title="Stock bajo y agotados" icon={<MdWarningAmber />} actions={<Link to="/inventario?tab=resumen" className="btn btn-sm">Ver inventario</Link>} flush>
+            <ul className="list padded">
+              {data.alerts.map((a) => (
+                <li key={`${a.warehouseId}-${a.productId}`}>
+                  <span><Link to={`/productos/${a.productId}`}><strong>{a.name}</strong></Link> <small>{a.warehouse.name}{a.warehouse.site ? ` · ${a.warehouse.site}` : ''}</small></span>
+                  <Badge tone={a.out ? 'bad' : 'warn'}>{a.out ? 'Agotado' : `Quedan ${Number(a.stock).toLocaleString('es-CO')} ${a.unit}`}</Badge>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
         <div className="grid grid-2-1">
           <Card title="Actividad reciente" icon={<MdMenuBook />} actions={<Link to="/bitacora" className="btn btn-sm">Ver bitácora</Link>} flush>
             {!data.recent.length ? <Empty icon={<MdTimeline />}>Aún no hay actividad.</Empty> : (
@@ -42,7 +57,7 @@ const Dashboard = () => {
               </ul>
             )}
           </Card>
-          <Card title="Muy pronto en tu dashboard" subtitle="Llegan con las próximas etapas.">
+          <Card title="Muy pronto en tu dashboard" subtitle="Llegan con la etapa 3: mesas, pedidos y caja.">
             <ul className="list">
               {data.upcoming.map((u) => { const Icon = UPCOMING_ICON[u] || MdTimeline; return <li key={u}><span><Icon /> {u}</span><Badge tone="muted">Pronto</Badge></li> })}
             </ul>

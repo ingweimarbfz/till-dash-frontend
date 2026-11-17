@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
-import { MdSearch, MdPersonAdd, MdPlace, MdWarehouse, MdManageAccounts, MdNorthEast, MdKeyboardReturn, MdAddBusiness } from 'react-icons/md'
+import { MdSearch, MdPersonAdd, MdPlace, MdWarehouse, MdManageAccounts, MdNorthEast, MdKeyboardReturn, MdAddBusiness, MdRestaurantMenu, MdCategory, MdLocalOffer, MdMoveToInbox } from 'react-icons/md'
 import api from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { navFor } from '../utils/nav'
@@ -10,10 +10,13 @@ import { Spinner } from './ui'
 // Acciones rápidas por rol (aparecen sin escribir nada, y se filtran al escribir).
 const ADMIN_ACTIONS = [
   { label: 'Nuevo usuario', hint: 'Mesero, cajero, cocina…', to: '/usuarios?nuevo=1', icon: MdPersonAdd, words: 'crear registrar usuario empleado mesero cajero' },
-  { label: 'Nueva sucursal', hint: 'Con su propia bodega', to: '/sucursales?nueva=1', icon: MdAddBusiness, words: 'crear sucursal sede local' }
+  { label: 'Nueva sucursal', hint: 'Con su propia bodega', to: '/sucursales?nueva=1', icon: MdAddBusiness, words: 'crear sucursal sede local' },
+  { label: 'Nuevo producto', hint: 'Plato, bebida o artículo de la carta', to: '/productos?nuevo=1', icon: MdRestaurantMenu, words: 'crear producto plato bebida carta menu' },
+  { label: 'Nueva categoría', hint: 'Bebidas, comida rápida, postres…', to: '/categorias?nueva=1', icon: MdCategory, words: 'crear categoria carta' },
+  { label: 'Entrada o traslado de inventario', hint: 'Compras, ajustes, bajas y traslados', to: '/inventario?tab=movimientos', icon: MdMoveToInbox, words: 'inventario entrada compra traslado bodega ajuste baja stock' }
 ]
 const ACTIONS = { superadmin: ADMIN_ACTIONS, admin: ADMIN_ACTIONS }
-const GROUP_ICON = { usuarios: MdManageAccounts, sucursales: MdPlace, bodegas: MdWarehouse }
+const GROUP_ICON = { productos: MdRestaurantMenu, categorias: MdCategory, promociones: MdLocalOffer, usuarios: MdManageAccounts, sucursales: MdPlace, bodegas: MdWarehouse }
 const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 
 export const useSearchShortcut = (open) => {

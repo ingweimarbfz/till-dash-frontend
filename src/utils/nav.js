@@ -19,10 +19,10 @@ const OPERATION = {
 const CATALOG = {
   title: 'Catálogo e inventario',
   items: [
-    { to: '/productos', label: 'Productos', icon: MdRestaurantMenu, soon: 'etapa 2' },
-    { to: '/categorias', label: 'Categorías', icon: MdCategory, soon: 'etapa 2' },
-    { to: '/inventario', label: 'Inventario', icon: MdInventory2, soon: 'etapa 2' },
-    { to: '/promociones', label: 'Promociones', icon: MdLocalOffer, soon: 'etapa 2' }
+    { to: '/productos', label: 'Productos', icon: MdRestaurantMenu },
+    { to: '/categorias', label: 'Categorías', icon: MdCategory },
+    { to: '/inventario', label: 'Inventario', icon: MdInventory2 },
+    { to: '/promociones', label: 'Promociones', icon: MdLocalOffer }
   ]
 }
 const adminNav = (owner) => [
@@ -37,7 +37,7 @@ const adminNav = (owner) => [
       { to: '/bitacora', label: 'Bitácora', icon: MdMenuBook },
       { to: '/sucursales', label: 'Sucursales y bodegas', icon: MdPlace },
       { to: '/usuarios', label: 'Usuarios', icon: MdManageAccounts },
-      { to: '/notificaciones', label: 'Notificaciones', icon: MdNotificationsActive, soon: 'etapa 2' },
+      { to: '/notificaciones', label: 'Notificaciones', icon: MdNotificationsActive },
       { to: '/configuracion', label: 'Configuración', icon: MdSettings, end: true },
       ...(owner ? [{ to: '/configuracion/apariencia', label: 'Apariencia', icon: MdPalette }] : [])
     ]
@@ -49,7 +49,8 @@ const NAV = {
   admin: adminNav(false),
   empleado: [
     { title: 'General', items: [{ to: '/', label: 'Mi turno', icon: MdDashboard, end: true }] },
-    OPERATION
+    OPERATION,
+    { title: 'Consulta', items: [{ to: '/productos', label: 'Productos', icon: MdRestaurantMenu }, { to: '/inventario', label: 'Inventario', icon: MdInventory2 }] }
   ],
   cliente: [
     { title: 'Mi mesa', items: [{ to: '/', label: 'Carta y pedido', icon: MdQrCode2, end: true }] }

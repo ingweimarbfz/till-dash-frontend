@@ -8,6 +8,7 @@ import { navFor, titleFor, ACCOUNT_NAV, ROLE_LABELS } from '../utils/nav'
 import { Avatar } from '../components/ui'
 import { BrandLogo } from '../components/Logo'
 import SearchPalette, { useSearchShortcut } from '../components/SearchPalette'
+import StockAlerts from '../components/StockAlerts'
 
 // Fecha corta: "Lun, 16 Nov 2026".
 const todayLabel = (() => {
@@ -176,6 +177,7 @@ const AppLayout = () => {
           <Outlet key={site || 'all'} />
         </main>
         {searching && <SearchPalette onClose={() => setSearching(false)} />}
+        {user.role !== 'cliente' && <StockAlerts key={site || 'all'} />}
       </div>
     </div>
   )
