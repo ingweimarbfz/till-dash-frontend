@@ -80,6 +80,59 @@ const ShiftsAndProducts = ({ data }) => {
     </div>
   )
 }
+// Tiempos de preparación: de lo que pasa por cocina, bar o barista.
+const AREA_LABEL = { cocina: '🍳 Cocina', bar: '🍸 Bar', barista: '☕ Barista' }
+const prepLabel = (m) => (m === null || m === undefined ? '—' : m < 1 ? `${Math.max(1, Math.round(m * 60))} s` : minutesLabel(m))
+const PrepRow = ({ p, rank, max, slow }) => (
+  <li className="mix-row">
+    <span className="mix-rank">{rank}</span>
+    <div className="grow">
+      <strong>{p.name}</strong>
+      <small className="block muted">{AREA_LABEL[p.area] || p.area} · {p.count} {p.count === 1 ? 'vez' : 'veces'}{p.avgPrepMinutes !== null ? ` · preparación ${prepLabel(p.avgPrepMinutes)}` : ''}</small>
+      <span className="prep-bar" aria-hidden="true"><span className={slow ? 'slow' : ''} style={{ width: `${Math.max(3, (p.avgMinutes / max) * 100)}%` }} /></span>
+    </div>
+    <div className="mix-num"><b>{prepLabel(p.avgMinutes)}</b>{p.count > 1 && <small>máx. {prepLabel(p.maxMinutes)}</small>}</div>
+  </li>
+)
+const PrepTimes = ({ t }) => {
+  if (!t) return null
+  const max = Math.max(1, ...t.slowest.map((p) => p.avgMinutes))
+  return (
+    <Card title="Tiempos de preparación" subtitle={`Últimos ${t.days} días · desde que se pide hasta que queda listo en cocina, bar o barista`} icon={<MdHourglassTop />}>
+      {!t.count ? <Empty icon={<MdHourglassTop />}>Cuando cocina, bar o barista marquen los productos como listos verás aquí cuánto se demora cada uno.</Empty> : (
+        <div className="prep-grid">
+          <div className="stack" style={{ gap: 12 }}>
+            <div className="usage-kpis">
+              <div><span>Promedio por producto</span><strong>{prepLabel(t.avgMinutes)}</strong><small>{t.count} preparados · {t.products} productos</small></div>
+              <div><span>La mitad sale en menos de</span><strong>{prepLabel(t.medianMinutes)}</strong><small>El más largo tardó {prepLabel(t.maxMinutes)}</small></div>
+            </div>
+            {(t.avgWaitMinutes !== null || t.avgPrepMinutes !== null) && (
+              <div className="usage-kpis">
+                <div><span>Espera en cola</span><strong>{prepLabel(t.avgWaitMinutes)}</strong><small>Hasta que lo empiezan</small></div>
+                <div><span>Preparación</span><strong>{prepLabel(t.avgPrepMinutes)}</strong><small>Desde que lo empiezan</small></div>
+              </div>
+            )}
+            <div>
+              <span className="label-sm">Por área</span>
+              <ul className="list">{t.areas.map((a) => (
+                <li key={a.area}><span><strong>{AREA_LABEL[a.area] || a.area}</strong> <small className="muted">{a.count} preparados</small></span><b>{prepLabel(a.avgMinutes)}</b></li>
+              ))}</ul>
+            </div>
+          </div>
+          <div>
+            <span className="label-sm"><MdTrendingUp /> Los más demorados</span>
+            <ol className="mix-list">{t.slowest.map((p, i) => <PrepRow key={`s${p.id ?? p.name}`} p={p} rank={i + 1} max={max} slow />)}</ol>
+          </div>
+          <div>
+            <span className="label-sm"><MdTrendingDown /> Los más rápidos</span>
+            <ol className="mix-list">{t.fastest.map((p, i) => <PrepRow key={`f${p.id ?? p.name}`} p={p} rank={i + 1} max={max} />)}</ol>
+          </div>
+        </div>
+      )}
+      {t.count > 0 && <small className="hint">💡 {t.minCount > 1 ? `Solo se comparan productos preparados al menos ${t.minCount} veces. ` : ''}Si un producto tarda mucho en cola y poco en preparación, falta personal o se pide junto con otros; si tarda en preparación, revisa la receta o deja parte adelantada (mise en place).</small>}
+    </Card>
+  )
+}
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches' }
 
 // Dashboard por rol. Cada etapa le suma indicadores (pedidos, mesas, caja, ventas, stock, llamados).
@@ -136,6 +189,7 @@ const Dashboard = () => {
           </Card>
         </div>
         <ShiftsAndProducts data={data} />
+        <PrepTimes t={data.prepTimes} />
         {data.tableUsage && (
           <Card title="Uso de las mesas" subtitle="Últimos 30 días · cuánto dura una mesa ocupada y cuánto vende por hora" icon={<MdTimer />}
             actions={<Link to="/reportes?tab=mesas" className="btn btn-sm">Ver reporte</Link>}>

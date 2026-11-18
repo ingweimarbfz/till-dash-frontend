@@ -1594,3 +1594,11 @@ tr.sub-row td:first-child { padding-left: 24px; }
 .delivery-money small { font-size: 11px; }
 .courier-close { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .courier-close h5 { margin: 0; font-size: 14px; }
+/* Tiempos de preparación (dashboard) */
+.prep-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
+.prep-grid .label-sm { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.prep-bar { display: block; height: 4px; margin-top: 5px; border-radius: 999px; background: var(--gray-100); overflow: hidden; }
+.prep-bar span { display: block; height: 100%; border-radius: inherit; background: var(--ok, #16a34a); }
+.prep-bar span.slow { background: var(--warn, #d97706); }
+@media (max-width: 1100px) { .prep-grid { grid-template-columns: 1fr 1fr; } .prep-grid > :first-child { grid-column: 1 / -1; } }
+@media (max-width: 680px) { .prep-grid { grid-template-columns: 1fr; } }
