@@ -552,6 +552,92 @@ const Partners = ({ data, onNew, onEdit, onPay, onVoid }) => (
 )
 
 // ---------- Página ----------
+// ---------- Cuentas por pagar a proveedores (TD-011) ----------
+// Compras de inventario a crédito. Cada abono sale de una cuenta, la caja, el banco o un socio y queda como gasto de compras.
+const PayableModal = ({ payable, funds, partners, sources, onClose, onDone }) => {
+  const [f, setF] = useState({ amount: String(payable.pending), source: 'fondo', fund: 'general', sessionId: '', partnerId: '', paidOn: bogota() })
+  const [sessions, setSessions] = useState([])
+  const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? v.target.value : v }))
+  useEffect(() => { api.get('/caja/turnos', { params: { estado: 'abierta', ...NO_SITE } }).then(({ data }) => setSessions(data)).catch(() => setSessions([])) }, [])
+  const fund = funds.find((x) => x.key === f.fund)
+  const submit = async (e) => {
+    e.preventDefault(); setError('')
+    if (!(Number(f.amount) > 0)) return setError('Escribe el valor del abono.')
+    if (Number(f.amount) > payable.pending) return setError(`El abono supera el saldo pendiente (${formatMoney(payable.pending)}).`)
+    setSaving(true)
+    try {
+      const { data } = await api.post(`/finanzas/por-pagar/${payable.id}/abonos`, f, { params: NO_SITE })
+      onDone(data)
+    } catch (err) { setError(errorMessage(err)); setSaving(false) }
+  }
+  return (
+    <Modal title={`Abonar a ${payable.number}`} size="lg" onClose={onClose}
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="cp-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdPayments />} Registrar abono</button></>}>
+      <form id="cp-form" className="form-grid" onSubmit={submit} noValidate>
+        <div className="span-2"><strong>{payable.supplier}</strong> · {payable.description}<br /><small className="muted">Total {formatMoney(payable.amount)} · abonado {formatMoney(payable.paid)} · pendiente <strong>{formatMoney(payable.pending)}</strong></small></div>
+        <Field label="Valor del abono" htmlFor="cpa" required><MoneyInput id="cpa" value={f.amount} onChange={set('amount')} /></Field>
+        <Field label="Fecha de pago" htmlFor="cpd"><input id="cpd" type="date" value={f.paidOn} max={bogota()} onChange={set('paidOn')} /></Field>
+        <div className="span-2">
+          <span className="label-sm">¿Con qué se pagó?</span>
+          <div className="chip-list" style={{ marginTop: 6 }}>{Object.entries(sources).map(([k, l]) => <button key={k} type="button" className={`pchip${f.source === k ? ' on' : ''}`} onClick={() => set('source')(k)}>{l}</button>)}</div>
+        </div>
+        {f.source === 'fondo' && <FundSelect id="cpf" funds={funds.filter((x) => x.active !== false)} value={f.fund} onChange={set('fund')} label="Sale de"
+          hint={fund && Number(f.amount) > fund.balance ? `No alcanza: ${fund.name} tiene ${formatMoney(fund.balance)}` : 'Se valida que la cuenta tenga el dinero'} />}
+        {f.source === 'caja' && (
+          <Field label="Turno de caja abierto" htmlFor="cpt" required hint={sessions.length ? 'Sale en efectivo de esa caja' : 'No hay cajas abiertas'}>
+            <select id="cpt" value={f.sessionId} onChange={set('sessionId')}><option value="">Elige el turno</option>{sessions.map((s) => <option key={s.id} value={s.id}>{s.register} · {s.number}{s.site ? ` · ${s.site}` : ''}</option>)}</select>
+          </Field>
+        )}
+        {f.source === 'socio' && (
+          <Field label="Socio que lo pagó" htmlFor="cps" required hint="Queda como aporte del socio">
+            <select id="cps" value={f.partnerId} onChange={set('partnerId')}><option value="">Elige el socio</option>{partners.filter((x) => x.active).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select>
+          </Field>
+        )}
+        {error && <div className="alert bad span-2">{error}</div>}
+      </form>
+    </Modal>
+  )
+}
+
+const Payables = ({ version, onPay }) => {
+  const [r, setR] = useState(null); const [status, setStatus] = useState('pendiente'); const [error, setError] = useState('')
+  useEffect(() => { api.get('/finanzas/por-pagar', { params: { estado: status || undefined, ...NO_SITE } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [status, version])
+  return (
+    <div className="stack">
+      {error && <div className="alert bad">{error}</div>}
+      {!r ? <Spinner /> : (
+        <>
+          <div className="kpis">
+            <Kpi label="Por pagar a proveedores" value={formatMoney(r.totals.pending)} icon={MdReceiptLong} tone="dark" note={`${r.totals.count} cuentas pendientes`} />
+            <Kpi label="Vencido" value={formatMoney(r.totals.overdue)} note="Ya pasó la fecha de pago" />
+          </div>
+          <Card title="Cuentas por pagar" subtitle="Compras de inventario a crédito con el proveedor" flush actions={<div className="card-actions">
+            <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Estado"><option value="pendiente">Pendientes</option><option value="pagada">Pagadas</option><option value="">Todas</option></select>
+            <button type="button" className="btn btn-sm" onClick={() => download('cuentas-por-pagar', [['Número', 'number'], ['Proveedor', 'supplier'], ['Compra', 'movementRef'], ['Factura', 'invoiceRef'], ['Vence', 'dueOn'], ['Total', 'amount'], ['Abonado', 'paid'], ['Pendiente', 'pending'], ['Estado', 'status']], r.rows)}>Excel</button>
+          </div>}>
+            {!r.rows.length ? <Empty icon={<MdReceiptLong />}>{status === 'pendiente' ? 'No hay deudas con proveedores. Las compras a crédito aparecen aquí.' : 'No hay cuentas en este estado.'}</Empty> : (
+              <div className="table-wrap"><table className="table">
+                <thead><tr><th>Proveedor</th><th>Compra</th><th>Vence</th><th className="num">Total</th><th className="num">Pendiente</th><th /></tr></thead>
+                <tbody>{r.rows.map((x) => (
+                  <tr key={x.id}>
+                    <td><strong>{x.supplier}</strong><br /><small className="muted">{x.number}</small></td>
+                    <td><small>{x.movementRef}{x.invoiceRef ? ` · Fact. ${x.invoiceRef}` : ''}<br /><span className="muted">{x.description}</span></small></td>
+                    <td>{x.dueOn ? formatDate(x.dueOn) : '—'}{x.overdue && <> <Badge tone="bad">Vencida</Badge></>}</td>
+                    <td className="num money">{formatMoney(x.amount)}</td>
+                    <td className="num money">{formatMoney(x.pending)}</td>
+                    <td className="num">{x.status === 'pendiente' ? <button type="button" className="btn btn-sm btn-primary" onClick={() => onPay(x)}><MdPayments /> Abonar</button> : <Badge tone={x.status === 'pagada' ? 'ok' : 'bad'}>{x.status === 'pagada' ? 'Pagada' : 'Anulada'}</Badge>}</td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
+          </Card>
+        </>
+      )}
+    </div>
+  )
+}
+
 const FinancePage = () => {
   const [params, setParams] = useSearchParams()
   const [tab, setTabState] = useState(params.get('tab') || 'resumen')
@@ -591,7 +677,7 @@ const FinancePage = () => {
           )}
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['fondos', 'Fondos y subcuentas'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos de dinero'], ['socios', 'Socios']]} />
+      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['fondos', 'Fondos y subcuentas'], ['gastos', 'Gastos'], ['porpagar', 'Cuentas por pagar'], ['ingresos', 'Ingresos de dinero'], ['socios', 'Socios']]} />
       {error && <div className="alert bad">{error}</div>}
       {!ready ? <div className="splash" style={{ minHeight: 240 }}><Spinner /></div> : (
         <>
@@ -601,6 +687,7 @@ const FinancePage = () => {
             onNewSub={(parentKey) => setModal({ type: 'sub', sub: { parentKey } })} onEditSub={(sub) => setModal({ type: 'sub', sub })}
             onPayService={(sub, sv) => setModal({ type: 'expense', initial: { source: 'fondo', fund: sub.key, ...(sv ? { description: sv.name, category: sv.category } : {}) } })} />}
           {tab === 'gastos' && <Expenses range={range} rangeNode={rangeNode} version={version} onNew={() => setModal({ type: 'expense' })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
+          {tab === 'porpagar' && <Payables version={version} onPay={(payable) => setModal({ type: 'payable', payable })} />}
           {tab === 'ingresos' && <Entries range={range} rangeNode={rangeNode} version={version} onNew={(fund) => setModal({ type: 'entry', fund })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
           {tab === 'socios' && <Partners data={partners} onNew={() => setModal({ type: 'partner' })} onEdit={(p) => setModal({ type: 'partner', partner: p })} onPay={(initial) => setModal({ type: 'pay', initial })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
         </>
@@ -611,6 +698,7 @@ const FinancePage = () => {
       {modal?.type === 'partner' && <PartnerModal partner={modal.partner} onClose={() => setModal(null)} onDone={() => refresh('Socio guardado')} />}
       {modal?.type === 'pay' && <WithdrawalModal funds={principals(funds.funds)} partners={partners.rows} kinds={partners.withdrawalKinds} methods={funds.methods} initial={modal.initial} onClose={() => setModal(null)} onDone={() => refresh('Pago registrado')} />}
       {modal?.type === 'sub' && <SubaccountModal funds={funds.funds} sub={modal.sub} categories={meta.categories} onClose={() => setModal(null)} onDone={(msg, key) => { if (key) setFund(key); refresh(msg) }} />}
+      {modal?.type === 'payable' && <PayableModal payable={modal.payable} funds={funds.funds} partners={partners.rows} sources={meta.sources} onClose={() => setModal(null)} onDone={(d) => refresh(`Abono ${d.number} registrado`)} />}
       {modal?.type === 'void' && <VoidModal doc={modal.doc} onClose={() => setModal(null)} onDone={() => refresh(`${modal.doc.number} anulado`)} />}
       {toastNode}
     </div>

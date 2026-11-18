@@ -7,7 +7,7 @@ import { Badge, Card, Empty, Field, Modal, PageHead, Spinner, useToast } from '.
 import { MoneyInput, PhotoInput } from '../../components/forms'
 import { formatMoney } from '../../utils/format'
 import { PromoTag, PromoPrice } from './promotions'
-import { AREAS, fmtQty, MovementModal, UNITS, useWarehouses, WarehouseOptions } from './common'
+import { AREAS, fmtQty, MovementModal, UNITS, useWarehouses, WarehouseOptions, PurchasePaymentField, usePurchaseSources, paymentError, paymentBody, paymentNote } from './common'
 import { notifyStock } from '../../components/StockAlerts'
 import SupplierField from '../../components/SupplierField'
 
@@ -18,9 +18,12 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
   const editing = Boolean(initial?.id)
   const [form, setForm] = useState({
     sku: '', name: '', categoryId: '', description: '', unit: 'und', cost: '', price: '', trackStock: true, minStock: 0,
-    initialStock: 0, warehouseId: main?.id || '', photoUrl: null, gallery: [], showInMenu: true, active: true, ...(initial || {})
+    initialStock: 0, warehouseId: main?.id || '', payment: '', paySessionId: '', payAccount: '', photoUrl: null, gallery: [], showInMenu: true, active: true, ...(initial || {})
   })
   const [loadingGallery, setLoadingGallery] = useState(editing)
+  const sources = usePurchaseSources()
+  const initialTotal = Math.round((Number(form.initialStock) || 0) * (Number(form.cost) || 0))
+  const withStock = !editing && form.trackStock && Number(form.initialStock) > 0
   // La lista no trae la galería: al editar se carga la ficha completa.
   useEffect(() => { if (editing) api.get(`/inventario/productos/${initial.id}`).then(({ data }) => setForm((f) => ({ ...f, gallery: data.gallery || [] }))).finally(() => setLoadingGallery(false)) }, [editing, initial?.id])
   const setGallery = (i) => (v) => setForm((f) => { const g = [...(f.gallery || [])]; g[i] = v; return { ...f, gallery: g } })
@@ -31,9 +34,10 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
     e.preventDefault(); setError('')
     if (!form.name.trim()) return setError('Escribe el nombre del producto.')
     if (!form.categoryId) return setError('Selecciona la categoría. Si no existe, créala en Categorías.')
+    if (withStock) { const pe = paymentError(form, initialTotal, { supplierId: form.supplierId }); if (pe) return setError(pe) }
     setSaving(true)
     try {
-      const body = { ...form, gallery: (form.gallery || []).filter(Boolean) }
+      const body = { ...form, payment: undefined, paySessionId: undefined, payAccount: undefined, ...(withStock ? paymentBody(form) : {}), gallery: (form.gallery || []).filter(Boolean) }
       if (loadingGallery) delete body.gallery
       const { data } = editing ? await api.put(`/inventario/productos/${initial.id}`, body) : await api.post('/inventario/productos', body)
       onSaved(data, editing)
@@ -62,6 +66,7 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
         {form.trackStock && <Field label="Stock mínimo por bodega" htmlFor="pmin" hint="Al llegar aquí avisa con un toast y por Telegram"><input id="pmin" type="number" step="any" min="0" value={form.minStock} onChange={set('minStock')} /></Field>}
         {form.trackStock && !editing && <Field label="Stock inicial" htmlFor="pini"><input id="pini" type="number" step="any" min="0" value={form.initialStock} onChange={set('initialStock')} /></Field>}
         {form.trackStock && !editing && Number(form.initialStock) > 0 && <div className="span-2"><Field label="Bodega del stock inicial" htmlFor="pwh"><select id="pwh" value={form.warehouseId} onChange={set('warehouseId')}><WarehouseOptions sites={sites} warehouses={warehouses} /></select></Field></div>}
+        {withStock && <div className="span-2"><PurchasePaymentField id="ppay" value={form} onChange={(v) => setForm((x) => ({ ...x, ...v }))} total={initialTotal} sources={sources} supplierId={form.supplierId} /></div>}
         <div className="span-2"><Field label="Descripción" htmlFor="pd" hint="Ingredientes o detalle que verá el cliente en la carta"><textarea id="pd" rows={2} value={form.description || ''} onChange={set('description')} /></Field></div>
         <label className="check"><input type="checkbox" checked={form.showInMenu} onChange={set('showInMenu')} /> Mostrar en la carta</label>
         {editing && <label className="check"><input type="checkbox" checked={form.active} onChange={set('active')} /> Producto activo</label>}
@@ -143,7 +148,7 @@ const ProductsPage = () => {
           )}
       </Card>
       {modal?.product && <ProductForm initial={modal.product.id ? modal.product : null} categories={categories} sites={sites} warehouses={warehouses} main={main}
-        onClose={() => setModal(null)} onSaved={(p, was) => changed(was ? 'Producto actualizado' : 'Producto creado')} />}
+        onClose={() => setModal(null)} onSaved={(p, was) => changed(was ? 'Producto actualizado' : `Producto creado${paymentNote(p.purchase)}`)} />}
       {modal?.move && products && <MovementModal products={products} sites={sites} warehouses={warehouses} defaults={{ warehouseId: main ? String(main.id) : '', productId: modal.move.productId }} onClose={() => setModal(null)} onSaved={changed} />}
       {toastNode}
     </div>
