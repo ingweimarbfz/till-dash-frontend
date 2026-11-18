@@ -64,12 +64,13 @@ const ChannelModal = ({ section, sections, sites, bot, onClose, onSaved }) => {
         </ol>
         <button type="button" className="btn" onClick={search} disabled={searching}>{searching ? <Spinner /> : <MdSearch />} Buscar grupos</button>
         {found && !found.length && <div className="alert warn">No aparece ningún grupo. Revisa que el bot esté en el grupo y escribe un mensaje nuevo allí.</div>}
+        {found?.some((g) => g.sameName) && <div className="alert warn"><span>Hay grupos distintos con el mismo nombre en Telegram. Se diferencian por el final de su id; en Telegram puedes renombrar o borrar los que sobran.</span></div>}
         {found?.length > 0 && (
           <div className="check-list">
             {found.map((g) => (
               <label key={g.chatId} className="check">
                 <input type="radio" name="grp" checked={form.chatId === g.chatId} onChange={() => setForm((f) => ({ ...f, chatId: g.chatId, title: g.title }))} />
-                <span>{g.title} <small className="muted">· {g.type === 'channel' ? 'canal' : 'grupo'}</small></span>
+                <span>{g.title} <small className="muted">· {g.type === 'channel' ? 'canal' : 'grupo'}{g.sameName ? ` · id …${g.chatId.slice(-4)}` : ''}</small>{g.sections?.length > 0 && <small className="block muted">Ya recibe: {g.sections.join(', ')}</small>}</span>
               </label>
             ))}
           </div>
