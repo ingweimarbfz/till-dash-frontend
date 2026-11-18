@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2, MdPointOfSale } from 'react-icons/md'
+import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2, MdPointOfSale, MdDeliveryDining } from 'react-icons/md'
 import { MoneyInput } from '../components/forms'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
 import { Card, Field, PageHead, Spinner, useToast } from '../components/ui'
+import { formatMoney } from '../utils/format'
+
+const formatShare = (pct) => formatMoney(Math.round(5000 * (Math.min(100, Math.max(0, Number(pct) || 0))) / 100))
 
 const TYPES = [['restaurante', 'Restaurante'], ['bar', 'Bar'], ['social_bar', 'Social bar'], ['discoteca', 'Discoteca'], ['market', 'Market'], ['cafeteria', 'Cafetería'], ['otro', 'Otro']]
 
@@ -69,6 +72,28 @@ const SettingsPage = () => {
             <Field label="Horas para reabrir un turno cerrado" htmlFor="crh" hint="Si hubo un error en el cierre, el administrador puede reabrir el turno durante estas horas y antes de abrir un turno nuevo en esa caja. 0: no se reabre.">
               <div className="input-prefix" style={{ maxWidth: 160 }}><span>h</span><input id="crh" type="number" min="0" max="72" step="1" inputMode="numeric" value={form.cashReopenHours ?? 12} onChange={set('cashReopenHours')} /></div>
             </Field>
+          </Card>
+          <Card title="Domicilios" icon={<MdDeliveryDining />} subtitle="Valor que se le cobra al cliente por llevarle el pedido.">
+            <Field label="Valor sugerido del domicilio" htmlFor="dfd" hint="Se precarga al abrir y al cobrar un domicilio; el cajero lo puede cambiar o no cobrarlo. 0: sin valor sugerido.">
+              <MoneyInput id="dfd" value={form.deliveryFeeDefault ?? 0} onChange={(v) => setForm((f) => ({ ...f, deliveryFeeDefault: v === '' ? 0 : v }))} />
+            </Field>
+            <Field label="Si el cliente paga por transferencia, Nequi o tarjeta" htmlFor="dtt" hint="Al abrir el domicilio se pregunta cómo paga el cliente. En efectivo siempre le paga al domiciliario cuando llega.">
+              <div className="seg seg-wrap" id="dtt">
+                <button type="button" className={`btn btn-sm${(form.deliveryTransferTiming || 'antes') === 'antes' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, deliveryTransferTiming: 'antes' }))}>Se cobra antes de enviar</button>
+                <button type="button" className={`btn btn-sm${form.deliveryTransferTiming === 'al_entregar' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, deliveryTransferTiming: 'al_entregar' }))}>Paga cuando llega el pedido</button>
+              </div>
+            </Field>
+            <Field label="¿Qué le toca al domiciliario?" htmlFor="csm" hint="Se le paga al cerrar la caja, junto con las propinas de sus entregas. Lo que no le toca queda como venta del negocio.">
+              <div className="seg seg-wrap">
+                <button type="button" className={`btn btn-sm${(form.courierShareMode || 'todo') === 'todo' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, courierShareMode: 'todo' }))}>Todo el domicilio</button>
+                <button type="button" className={`btn btn-sm${form.courierShareMode === 'porcentaje' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, courierShareMode: 'porcentaje' }))}>Un porcentaje</button>
+              </div>
+            </Field>
+            {form.courierShareMode === 'porcentaje' && (
+              <Field label="Porcentaje para el domiciliario" htmlFor="csp" hint={`De un domicilio de $5.000 le tocan ${formatShare(form.courierSharePercent)} y al negocio el resto.`}>
+                <div className="input-prefix" style={{ maxWidth: 160 }}><span>%</span><input id="csp" type="number" min="0" max="100" step="1" inputMode="decimal" value={form.courierSharePercent ?? 100} onChange={set('courierSharePercent')} /></div>
+              </Field>
+            )}
           </Card>
           <Card title="Carta y QR" icon={<MdQrCode2 />} subtitle="Las cartas por horario y lo que puede hacer el cliente al escanear el QR (varias opciones a la vez).">
             <div className="stack" style={{ gap: 8 }}>

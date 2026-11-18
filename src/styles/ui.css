@@ -226,7 +226,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; flex: n
 .empty .btn svg { font-size: 18px; color: inherit; }
 .spinner { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; opacity: .8; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.toast { position: fixed; right: 20px; bottom: 20px; z-index: 100; display: flex; align-items: center; gap: 10px; background: var(--black); color: var(--white); padding: 12px 16px; border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 13.5px; animation: up .2s ease; max-width: calc(100vw - 32px); }
+/* Arriba al centro: abajo a la derecha chocaba con los avisos de stock y con el panel del pedido de las mesas. */
+.toast { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 1000; display: flex; align-items: center; gap: 10px; background: var(--black); color: var(--white); padding: 12px 16px; border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 13.5px; animation: toast-in .2s ease; max-width: calc(100vw - 32px); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .toast svg { font-size: 20px; color: var(--brand); }
 .toast.bad svg { color: var(--bad); }
 @keyframes up { from { transform: translateY(10px); opacity: 0; } }
@@ -1570,6 +1572,28 @@ tr.sub-row td:first-child { padding-left: 24px; }
 @media (max-width: 1280px) { .dash-mix { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .dash-mix { grid-template-columns: 1fr; } }
 
+/* Domicilio: casilla y valor en el mismo renglón */
+.fee-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 40px; }
+
+/* Domicilios */
+.delivery-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.delivery-cols h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+@media (max-width: 1100px) { .delivery-cols { grid-template-columns: 1fr; } }
+.delivery-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.delivery-card { background: var(--card, #fff); border: 1px solid var(--line); border-left: 4px solid var(--warn, #d97706); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.delivery-card.st-en_camino { border-left-color: var(--brand); }
+.delivery-card.st-entregado { border-left-color: var(--ok, #16a34a); opacity: .9; }
+.delivery-who { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.delivery-address { display: flex; gap: 6px; align-items: flex-start; color: inherit; text-decoration: none; font-weight: 500; }
+.delivery-address svg { flex: none; margin-top: 3px; color: var(--brand); }
+.delivery-address:hover span { text-decoration: underline; }
+.delivery-items { display: block; }
+.delivery-money { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; background: var(--gray-50, #f7f7f5); border-radius: 10px; padding: 8px 10px; }
+.delivery-money div { display: flex; flex-direction: column; min-width: 0; }
+.delivery-money span { font-size: 12px; color: var(--muted); }
+.delivery-money small { font-size: 11px; }
+.courier-close { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.courier-close h5 { margin: 0; font-size: 14px; }
 /* Tiempos de preparación (dashboard) */
 .prep-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .prep-grid .label-sm { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }

@@ -28,6 +28,7 @@ const FinancePage = lazy(() => import('./pages/finanzas/FinancePage'))
 const IncidentsPage = lazy(() => import('./pages/operacion/IncidentsPage'))
 const TablesConfigPage = lazy(() => import('./pages/operacion/TablesConfigPage'))
 const OrdersPage = lazy(() => import('./pages/operacion/OrdersPage'))
+const DeliveriesPage = lazy(() => import('./pages/operacion/DeliveriesPage'))
 const OrderPage = lazy(() => import('./pages/operacion/OrderPage'))
 const KitchenPage = lazy(() => import('./pages/operacion/KitchenPage'))
 const CashPage = lazy(() => import('./pages/caja/CashPage'))
@@ -93,6 +94,7 @@ const App = () => (
               <Route path="mesas" element={<Protected roles={STAFF}><TablesPage /></Protected>} />
               <Route path="pedidos" element={<Protected roles={STAFF}><OrdersPage /></Protected>} />
               <Route path="pedidos/:id" element={<Protected roles={STAFF}><OrderPage /></Protected>} />
+              <Route path="domicilios" element={<Protected roles={STAFF}><DeliveriesPage /></Protected>} />
               <Route path="comandas" element={<Protected roles={STAFF}><KitchenPage /></Protected>} />
               <Route path="caja" element={<Protected roles={STAFF}><CashPage /></Protected>} />
               <Route path="reportes" element={<Protected roles={ADMIN}><ReportsPage /></Protected>} />
