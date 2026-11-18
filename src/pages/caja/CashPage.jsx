@@ -164,6 +164,7 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
             <div><dt>Base de apertura</dt><dd>{formatMoney(session.openingAmount)}</dd></div>
             <div><dt>Ventas y abonos en efectivo</dt><dd>{formatMoney(summary.byMethod.find((m) => m.method === 'efectivo')?.amount || 0)}</dd></div>
             <div><dt>Ingresos − egresos</dt><dd>{formatMoney(summary.income - summary.expenses)}</dd></div>
+            {summary.courierFloats ? <div><dt>Bases de domiciliarios (salida − devolución)</dt><dd>{formatMoney(summary.courierFloats)}</dd></div> : null}
             <div className="total"><dt>Efectivo esperado</dt><dd>{formatMoney(summary.expectedCash)}</dd></div>
           </dl>
           <Field label="Efectivo contado en la caja" htmlFor="cc" required><MoneyInput id="cc" value={counted} onChange={setCounted} autoFocus /></Field>

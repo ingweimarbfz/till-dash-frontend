@@ -4,7 +4,8 @@ import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsB
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Kpi, PageHead, Spinner, useToast } from '../../components/ui'
 import { formatDateTime, formatMoney, minutesLabel } from '../../utils/format'
-import { since } from './common'
+import { since, useCan } from './common'
+import { FloatsCard } from './CourierFloats'
 
 const TONE = { por_despachar: 'warn', en_camino: 'brand', entregado: 'ok' }
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
@@ -67,6 +68,7 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
 
 // ---------- Lista del día ----------
 const DayTab = ({ onPickCourier }) => {
+  const can = useCan()
   const [toast, toastNode] = useToast()
   const [day, setDay] = useState(today())
   const [courier, setCourier] = useState('')
@@ -108,6 +110,7 @@ const DayTab = ({ onPickCourier }) => {
         <Kpi label={data.mine ? 'Me toca hoy' : 'Les toca a los domiciliarios'} value={formatMoney(t.earned)} note={`${formatMoney(t.share)} domicilios + ${formatMoney(t.tips)} propinas`} icon={MdAccountBalanceWallet} tone="dark" />
         <Kpi label="Por cobrar a clientes" value={formatMoney(t.toCollect)} note="Pedidos aún sin pagar" tone={t.toCollect ? 'warn' : ''} />
       </div>
+      {data.today && <FloatsCard couriers={data.couriers} canManage={can('cajero')} mine={data.mine} onChanged={load} />}
       {!data.mine && data.byCourier.length > 0 && (
         <Card title="Por domiciliario" icon={<MdDirectionsBike />} flush>
           <div className="table-wrap"><table className="table">
@@ -214,7 +217,7 @@ export const CourierHome = () => {
   if (!data) return null
   const t = data.totals
   const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado')
-  return (
+  return (<>
     <Card title="Mis domicilios de hoy" icon={<MdDeliveryDining />} actions={<Link to="/domicilios" className="btn btn-sm btn-primary">Ver domicilios</Link>}>
       <div className="usage-kpis">
         <div><span>Por llevar</span><strong>{t.pending + t.onTheWay}</strong><small>{t.onTheWay} en camino</small></div>
@@ -226,7 +229,8 @@ export const CourierHome = () => {
         <li key={d.id}><span><Link to={`/pedidos/${d.id}`}><strong>{d.number}</strong></Link> <small className="muted">{d.address}</small></span><Badge tone={TONE[d.deliveryStatus]}>{d.deliveryStatusLabel}</Badge></li>
       ))}</ul>}
     </Card>
-  )
+    <FloatsCard couriers={[]} canManage={false} mine />
+  </>)
 }
 
 // ---------- Bloque de domicilio dentro del pedido ----------
