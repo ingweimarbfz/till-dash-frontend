@@ -87,7 +87,7 @@ const ChangeModal = ({ current, onClose, onSent }) => {
               <button key={p.id} type="button" className={`plan-pick-card${Number(f.planId) === p.id ? ' on' : ''}${p.id === opts.currentPlanId ? ' cur' : ''}`} onClick={() => setF({ ...f, planId: p.id })} disabled={p.id === opts.currentPlanId && f.billingCycle === current?.billingCycle}>
                 <div className="row-between"><strong>{p.name}</strong>{p.id === opts.currentPlanId ? <Badge>Actual</Badge> : p.badge && <Badge tone="brand"><MdStar /> {p.badge}</Badge>}</div>
                 <b className="price">{moneyIn(f.billingCycle === 'anual' ? p.priceYear : p.priceMonth, p.currency, c.locale)}<small>{f.billingCycle === 'anual' ? ' / año' : ' / mes'}</small></b>
-                <small>{limitText(p.limits.employees)} empleados · {limitText(p.limits.tables)} mesas · {limitText(p.limits.sites)} sucursales</small>
+                <small>{limitText(p.limits.employees)} empleados · {p.limits.tables === 0 ? 'sin mesas' : `${limitText(p.limits.tables)} mesas`} · {limitText(p.limits.sites)} sucursales</small>
               </button>
             ))}
           </div>

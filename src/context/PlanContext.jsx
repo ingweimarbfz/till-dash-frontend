@@ -5,7 +5,8 @@ import { setMoneyFormat } from '../utils/format'
 
 // Plan del establecimiento : qué módulos tiene y en qué país/moneda opera.
 // features = null significa sin restricciones (establecimiento sin plan asignado).
-const PlanContext = createContext({ features: null, has: () => true, plan: null, country: null, refresh: () => {} })
+// distributor: plan sin mesas (distribuidora): vende a domicilio y en mostrador (el cliente compra en el local), sin salón.
+const PlanContext = createContext({ features: null, has: () => true, distributor: false, plan: null, country: null, refresh: () => {} })
 
 export const PlanProvider = ({ children }) => {
   const { user } = useAuth()
@@ -23,6 +24,7 @@ export const PlanProvider = ({ children }) => {
   const value = useMemo(() => ({
     ...state,
     has: (key) => !key || !state.features || state.features.includes(key),
+    distributor: state.mode ? state.mode === 'distribuidora' : Boolean(state.features && !state.features.includes('mesas')),
     refresh
   }), [state, refresh])
   // Se espera el plan para que el menú y la moneda salgan bien desde el primer momento.

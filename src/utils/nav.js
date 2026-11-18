@@ -1,12 +1,14 @@
 import {
   MdDashboard, MdManageAccounts, MdSettings, MdMenuBook, MdPerson, MdPlace, MdPalette,
   MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdInventory2, MdCategory, MdLocalOffer, MdBarChart, MdAccountBalance, MdQrCode2, MdNotificationsActive, MdRestaurantMenu,
-  MdSoupKitchen, MdRequestQuote, MdReportProblem, MdAutoStories, MdLocalShipping, MdDeliveryDining
+  MdSoupKitchen, MdRequestQuote, MdReportProblem, MdAutoStories, MdLocalShipping, MdDeliveryDining, MdStorefront
 } from 'react-icons/md'
 
 export const ROLE_LABELS = { superadmin: 'Super administrador', admin: 'Administrador', empleado: 'Empleado', cliente: 'Cliente' }
 export const POSITION_LABELS = { mesero: 'Mesero', cajero: 'Cajero', cocina: 'Cocina', bartender: 'Bartender', barista: 'Barista', domiciliario: 'Domiciliario', host: 'Anfitrión', bodega: 'Bodega' }
 export const POSITIONS = Object.keys(POSITION_LABELS)
+// En una distribuidora no hay meseros ni mesas: el mesero es el vendedor y el anfitrión, quien atiende el mostrador.
+export const positionLabel = (p, distributor = false) => (distributor ? { mesero: 'Vendedor', host: 'Mostrador' }[p] : null) || POSITION_LABELS[p] || p
 
 // Lo que llega en las próximas etapas se muestra deshabilitado con la etapa (soon).
 // positions: cargos del empleado que ven la opción (el administrador ve todas).
@@ -17,6 +19,7 @@ const OPERATION = {
     { to: '/mesas', label: 'Mesas', icon: MdTableRestaurant, positions: SELLERS },
     { to: '/pedidos', label: 'Pedidos', icon: MdReceiptLong, positions: SELLERS },
     { to: '/domicilios', label: 'Domicilios', icon: MdDeliveryDining, positions: [...SELLERS, 'domiciliario'] },
+    { to: '/clientes', label: 'Clientes', icon: MdStorefront, positions: [...SELLERS, 'domiciliario'] },
     { to: '/comandas', label: 'Comandas', icon: MdSoupKitchen, positions: ['cocina', 'bartender', 'barista'] },
     { to: '/caja', label: 'Caja', icon: MdPointOfSale, positions: ['cajero'] },
     { to: '/cuentas-por-cobrar', label: 'Cuentas por cobrar', icon: MdRequestQuote, positions: ['cajero'] },
@@ -72,6 +75,7 @@ const PLAN_NAV = { title: 'Cuenta', items: [{ to: '/mi-plan', label: 'Mi plan', 
 
 // Pantalla → módulo del plan que la habilita (lo que no aparece es del núcleo).
 export const FEATURE_OF = {
+  '/mesas': 'mesas', '/configuracion/mesas': 'mesas', '/domicilios': 'domicilios', '/clientes': 'clientes',
   '/comandas': 'comandas', '/cuentas-por-cobrar': 'cuentas_por_cobrar', '/promociones': 'promociones', '/incidentes': 'incidentes',
   '/reportes': 'reportes', '/finanzas': 'finanzas', '/bitacora': 'bitacora', '/notificaciones': 'telegram', '/configuracion/apariencia': 'marca'
 }

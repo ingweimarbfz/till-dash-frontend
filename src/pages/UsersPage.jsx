@@ -5,7 +5,8 @@ import api, { errorMessage, getSiteFilter } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { Avatar, Badge, Card, Empty, Field, Modal, PageHead, Spinner, useToast } from '../components/ui'
 import { PhotoInput } from '../components/forms'
-import { ROLE_LABELS, POSITION_LABELS, POSITIONS } from '../utils/nav'
+import { ROLE_LABELS, POSITIONS, positionLabel } from '../utils/nav'
+import { usePlan } from '../context/PlanContext'
 import { formatDateTime } from '../utils/format'
 import { formErrors } from '../utils/validate'
 
@@ -29,6 +30,7 @@ const profilesOf = (f) => {
 }
 
 const UserForm = ({ initial, onClose, onSaved }) => {
+  const { distributor } = usePlan()
   const { user: me } = useAuth()
   const editing = Boolean(initial?.id)
   const [form, setForm] = useState(editing
@@ -48,7 +50,7 @@ const UserForm = ({ initial, onClose, onSaved }) => {
     e.preventDefault()
     setError('')
     const errs = formErrors({ identification: ['doc', form.identification, true], name: ['name', form.name, true], lastName: ['name', form.lastName], username: ['username', form.username, true], phone: ['phone', form.phone], email: ['email', form.email] })
-    if (isEmployee && !form.positions.length) errs.push('Elige al menos un cargo (mesero, cajero, cocina…).')
+    if (isEmployee && !form.positions.length) errs.push('Elige al menos un cargo (vendedor o mesero, cajero, domiciliario…).')
     if (form.password && form.password.length < 8) errs.push('La contraseña debe tener al menos 8 caracteres.')
     if (errs.length) return setError(errs.join(' '))
     setSaving(true)
@@ -90,7 +92,7 @@ const UserForm = ({ initial, onClose, onSaved }) => {
           <div className="span-2 profile-checks">
             <span className="profile-checks-title">Cargos <span className="req">*</span></span>
             <div className="chips" style={{ gridColumn: '1 / -1' }}>
-              {POSITIONS.map((p) => <button key={p} type="button" className={`btn btn-sm${form.positions.includes(p) ? ' on' : ''}`} onClick={() => togglePos(p)} aria-pressed={form.positions.includes(p)}>{POSITION_LABELS[p]}</button>)}
+              {POSITIONS.map((p) => <button key={p} type="button" className={`btn btn-sm${form.positions.includes(p) ? ' on' : ''}`} onClick={() => togglePos(p)} aria-pressed={form.positions.includes(p)}>{positionLabel(p, distributor)}</button>)}
             </div>
           </div>
         )}
@@ -117,6 +119,7 @@ const UserForm = ({ initial, onClose, onSaved }) => {
 }
 
 const UsersPage = () => {
+  const { distributor } = usePlan()
   const { user: me } = useAuth()
   const [users, setUsers] = useState(null)
   const [query, setQuery] = useState('')
@@ -162,7 +165,7 @@ const UsersPage = () => {
           </select>
           <select value={position} onChange={(e) => setPosition(e.target.value)} aria-label="Filtrar por cargo">
             <option value="">Todos los cargos</option>
-            {POSITIONS.map((p) => <option key={p} value={p}>{POSITION_LABELS[p]}</option>)}
+            {POSITIONS.map((p) => <option key={p} value={p}>{positionLabel(p, distributor)}</option>)}
           </select>
         </div>
         {!users ? <div className="splash" style={{ minHeight: 200 }}><Spinner /></div>
@@ -177,7 +180,7 @@ const UsersPage = () => {
                         <td><div className="person"><Avatar user={u} size="sm" /><div><strong>{u.fullName}</strong><small>{u.username} · {u.identification}</small></div></div></td>
                         <td>
                           <span className="badges">{(u.profiles || [u.role]).map((r) => <Badge key={r} tone={ROLE_TONE[r]}>{ROLE_LABELS[r]}</Badge>)}</span>
-                          {!!u.positions?.length && <><br /><small>{u.positions.map((p) => POSITION_LABELS[p]).join(', ')}</small></>}
+                          {!!u.positions?.length && <><br /><small>{u.positions.map((p) => positionLabel(p, distributor)).join(', ')}</small></>}
                           {u.site && <><br /><small>{u.site.name}</small></>}
                         </td>
                         <td className="hide-sm"><small>{u.phone || '—'}<br />{u.email || ''}</small></td>

@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsBike, MdRefresh, MdUndo, MdAccountBalanceWallet } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Kpi, PageHead, Spinner, useToast } from '../../components/ui'
 import { formatDateTime, formatMoney, minutesLabel } from '../../utils/format'
 import { since, useCan } from './common'
 import { FloatsCard } from './CourierFloats'
+import { OpenOrderModal } from './tableModals'
 
 const TONE = { por_despachar: 'warn', en_camino: 'brand', entregado: 'ok' }
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
@@ -35,7 +36,7 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
         <small className="muted">{d.deliveryStatus === 'entregado' && d.minutes !== null ? `Entregado en ${minutesLabel(d.minutes)}` : d.deliveryStatus === 'en_camino' ? `Salió ${since(d.dispatchedAt)}` : `Pedido ${since(d.openedAt)}`}</small>
       </div>
       <div className="delivery-who">
-        <strong>{d.customerName || 'Cliente'}</strong>
+        <strong>{d.customerName || 'Cliente'}</strong>{d.zone && <Badge tone="brand">{d.zone}</Badge>}
         {d.customerPhone && <a href={`tel:${d.customerPhone}`} className="btn btn-sm btn-ghost"><MdPhone /> {d.customerPhone}</a>}
       </div>
       <a className="delivery-address" href={mapUrl(d.address, city)} target="_blank" rel="noreferrer"><MdPlace /> <span>{d.address}{city ? <small className="muted"> · {city}</small> : null}</span></a>
@@ -75,6 +76,7 @@ const DayTab = ({ onPickCourier }) => {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [zone, setZone] = useState('')
   const load = useCallback(() => {
     api.get('/domicilios', { params: { dia: day, domiciliario: courier || undefined } }).then(({ data: d }) => { setData(d); setError('') }).catch((e) => setError(errorMessage(e)))
   }, [day, courier])
@@ -89,7 +91,10 @@ const DayTab = ({ onPickCourier }) => {
   if (error) return <div className="alert bad">{error}</div>
   if (!data) return <div className="splash" style={{ minHeight: 200 }}><Spinner /></div>
   const t = data.totals
-  const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado')
+  // Zona de reparto del cliente: filtra la lista y arma la ruta solo con esa zona.
+  const zones = [...new Set(data.deliveries.map((d) => d.zone).filter(Boolean))].sort()
+  const shown = zone ? data.deliveries.filter((d) => d.zone === zone) : data.deliveries
+  const active = shown.filter((d) => d.deliveryStatus !== 'entregado')
   const stops = active.map((d) => fullAddress(d.address, data.origin.city))
   const groups = [['por_despachar', 'Por despachar'], ['en_camino', 'En camino'], ['entregado', 'Entregados']]
   return (
@@ -99,6 +104,9 @@ const DayTab = ({ onPickCourier }) => {
         <Field label="Día" htmlFor="dd"><input id="dd" type="date" value={day} max={today()} onChange={(e) => setDay(e.target.value || today())} /></Field>
         {!data.mine && (
           <Field label="Domiciliario" htmlFor="dc"><select id="dc" value={courier} onChange={(e) => setCourier(e.target.value)}><option value="">Todos</option>{data.couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+        )}
+        {zones.length > 0 && (
+          <Field label="Zona" htmlFor="dz"><select id="dz" value={zone} onChange={(e) => setZone(e.target.value)}><option value="">Todas</option>{zones.map((z) => <option key={z} value={z}>{z}</option>)}</select></Field>
         )}
         <span className="grow" />
         <button type="button" className="btn" onClick={load}><MdRefresh /> Actualizar</button>
@@ -126,7 +134,7 @@ const DayTab = ({ onPickCourier }) => {
       {!data.deliveries.length ? <Card><Empty icon={<MdDeliveryDining />}>{data.mine ? 'No tienes domicilios asignados este día.' : 'No hay domicilios este día.'}</Empty></Card> : (
         <div className="delivery-cols">
           {groups.map(([k, label]) => {
-            const list = data.deliveries.filter((d) => d.deliveryStatus === k)
+            const list = shown.filter((d) => d.deliveryStatus === k)
             return (
               <section key={k}>
                 <h4 className="label-sm">{label} <Badge tone={TONE[k]}>{list.length}</Badge></h4>
@@ -198,9 +206,15 @@ const DeliveriesPage = () => {
   const tab = params.get('tab') === 'cuentas' ? 'cuentas' : 'dia'
   const [courierId, setCourierId] = useState(Number(params.get('domiciliario')) || null)
   const go = (t, extra = {}) => setParams({ ...(t === 'cuentas' ? { tab: 'cuentas' } : {}), ...extra })
+  const can = useCan()
+  const navigate = useNavigate()
+  const [opening, setOpening] = useState(false)
   return (
     <div className="stack">
-      <PageHead title="Domicilios" subtitle="Quién lleva cada pedido, la ruta, lo que se cobra y lo que le toca a cada domiciliario." />
+      <PageHead title="Domicilios" subtitle="Quién lleva cada pedido, la ruta, lo que se cobra y lo que le toca a cada domiciliario.">
+        {can('mesero', 'cajero', 'host', 'bartender', 'barista') && <button type="button" className="btn btn-primary" onClick={() => setOpening(true)}><MdDeliveryDining /> Nuevo domicilio</button>}
+      </PageHead>
+      {opening && <OpenOrderModal type="domicilio" onClose={() => setOpening(false)} onOpened={(o) => navigate(`/pedidos/${o.id}`)} />}
       <div className="seg">
         <button type="button" className={`btn btn-sm${tab === 'dia' ? ' on' : ''}`} onClick={() => go('dia')}><MdDeliveryDining /> Domicilios del día</button>
         <button type="button" className={`btn btn-sm${tab === 'cuentas' ? ' on' : ''}`} onClick={() => go('cuentas')}><MdAccountBalanceWallet /> Cuentas</button>
