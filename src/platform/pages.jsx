@@ -8,7 +8,7 @@ import { OrgLegalModal } from './legalPages'
 import { CountryLabel, CountrySelect, Flag, FEATURE_SHORT, annualPrice, limitText, moneyIn } from '../utils/countries'
 
 const GROUPS = { operacion: 'Operación', catalogo: 'Catálogo', clientes: 'Clientes', control: 'Control', marca: 'Marca' }
-export const BUSINESS_TYPES = { restaurante: 'Restaurante', bar: 'Bar', social_bar: 'Social bar', discoteca: 'Discoteca', cafeteria: 'Cafetería', market: 'Market', otro: 'Otro' }
+export const BUSINESS_TYPES = { restaurante: 'Restaurante', bar: 'Bar', social_bar: 'Social bar', discoteca: 'Discoteca', cafeteria: 'Cafetería', market: 'Market', distribuidora: 'Distribuidora', otro: 'Otro' }
 const STATUS = { activa: ['Activo', 'brand'], prueba: ['En prueba', 'warn'], suspendida: ['Suspendido', 'bad'], cancelada: ['Cancelado', 'muted'] }
 const REQ = { pendiente: ['Pendiente', 'warn'], contactado: ['Contactado', 'dark'], aplicada: ['Aplicada', 'brand'], rechazada: ['Rechazada', 'muted'] }
 const LIMITS = [

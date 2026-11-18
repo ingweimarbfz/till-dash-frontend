@@ -150,7 +150,7 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
               <Field label="Nombre" htmlFor="xn" required><input id="xn" value={cxc.customerName} onChange={(e) => setCxc({ ...cxc, customerName: e.target.value })} /></Field>
               <Field label="Documento" htmlFor="xd"><input id="xd" value={cxc.customerDoc} onChange={(e) => setCxc({ ...cxc, customerDoc: e.target.value })} /></Field>
               <Field label="Celular" htmlFor="xp"><input id="xp" inputMode="tel" value={cxc.customerPhone} onChange={(e) => setCxc({ ...cxc, customerPhone: e.target.value })} /></Field>
-              <Field label="Paga a más tardar" htmlFor="xf"><input id="xf" type="date" value={cxc.dueDate} onChange={(e) => setCxc({ ...cxc, dueDate: e.target.value })} /></Field>
+              <Field label="Paga a más tardar" htmlFor="xf" hint={order.customerId ? 'Vacío: el plazo de crédito del cliente' : undefined}><input id="xf" type="date" value={cxc.dueDate} onChange={(e) => setCxc({ ...cxc, dueDate: e.target.value })} /></Field>
             </div>
           )}
           {error && <div className="alert bad">{error}</div>}

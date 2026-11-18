@@ -60,7 +60,8 @@ export const CountrySelect = ({ countries = [], value, onChange, id, placeholder
 export const FEATURE_SHORT = {
   mesas: 'Mesas y pedidos', caja: 'Caja y propinas', productos: 'Carta e inventario', comandas: 'Comandas', carta_qr: 'Carta QR',
   cuentas_por_cobrar: 'Cuentas por cobrar', promociones: 'Promociones', incidentes: 'Incidentes', reportes: 'Reportes',
-  finanzas: 'Finanzas y socios', bitacora: 'Bitácora', telegram: 'Telegram', marca: 'Marca propia'
+  finanzas: 'Finanzas y socios', bitacora: 'Bitácora', telegram: 'Telegram', marca: 'Marca propia',
+  domicilios: 'Domicilios', clientes: 'Clientes y zonas'
 }
 
 // Igual que el backend: anual con descuento, redondeado según el tamaño del precio.

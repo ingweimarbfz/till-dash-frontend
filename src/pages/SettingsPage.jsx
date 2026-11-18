@@ -10,7 +10,7 @@ import { formatMoney } from '../utils/format'
 
 const formatShare = (pct) => formatMoney(Math.round(5000 * (Math.min(100, Math.max(0, Number(pct) || 0))) / 100))
 
-const TYPES = [['restaurante', 'Restaurante'], ['bar', 'Bar'], ['social_bar', 'Social bar'], ['discoteca', 'Discoteca'], ['market', 'Market'], ['cafeteria', 'Cafetería'], ['otro', 'Otro']]
+const TYPES = [['restaurante', 'Restaurante'], ['bar', 'Bar'], ['social_bar', 'Social bar'], ['discoteca', 'Discoteca'], ['market', 'Market'], ['cafeteria', 'Cafetería'], ['distribuidora', 'Distribuidora'], ['otro', 'Otro']]
 
 // Configuración general del establecimiento (superadmin y admin). La apariencia es solo del superadmin.
 const SettingsPage = () => {

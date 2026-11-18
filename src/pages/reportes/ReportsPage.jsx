@@ -11,6 +11,7 @@ import { formatDate, formatDateTime, formatMoney, minutesLabel } from '../../uti
 
 import { bogota, PRESETS, dayLabel, download } from '../../utils/range'
 import CuadreTab from './CuadreTab'
+import { usePlan } from '../../context/PlanContext'
 
 const ExportBtn = ({ onClick }) => <button type="button" className="btn btn-sm" onClick={onClick}><MdDownload /> Excel</button>
 const pct = (v) => (v === null || v === undefined ? '—' : `${String(v).replace('.', ',')} %`)
@@ -166,6 +167,7 @@ const Tables = ({ r, file }) => {
 
 // Reportes: un rango de fechas y la sucursal elegida arriba (o todas).
 const ReportsPage = () => {
+  const { distributor } = usePlan()
   const presets = useMemo(PRESETS, [])
   const [preset, setPreset] = useState('d7')
   const [range, setRange] = useState({ from: presets.d7[1], to: presets.d7[2] })
@@ -195,13 +197,13 @@ const ReportsPage = () => {
           <input type="date" value={range.to} min={range.from} max={bogota()} onChange={(e) => { setPreset(''); setRange((x) => ({ ...x, to: e.target.value })) }} aria-label="Hasta" />
         </div>
       </div>}
-      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuadre', 'Cuadre del día'], ['productos', 'Productos'], ['meseros', 'Meseros'], ['mesas', 'Mesas'], ['propinas', 'Propinas'], ['perdidas', 'Cortesías y anulaciones']]} />
+      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuadre', 'Cuadre del día'], ['productos', 'Productos'], ['meseros', distributor ? 'Vendedores' : 'Meseros'], ...(distributor ? [] : [['mesas', 'Mesas']]), ['propinas', 'Propinas'], ['perdidas', 'Cortesías y anulaciones']]} />
       {tab === 'cuadre' ? <CuadreTab /> : error ? <div className="alert bad">{error}</div> : !r ? <div className="splash" style={{ minHeight: 240 }}><Spinner /></div> : (
         <div className={loading ? 'is-loading' : ''}>
           {tab === 'resumen' && <Summary r={r} />}
           {tab === 'productos' && <Products r={r} file={file} />}
           {tab === 'meseros' && <Waiters r={r} file={file} />}
-          {tab === 'mesas' && <Tables r={r} file={file} />}
+          {tab === 'mesas' && !distributor && <Tables r={r} file={file} />}
           {tab === 'propinas' && <Tips r={r} file={file} />}
           {tab === 'perdidas' && <Losses r={r} file={file} />}
         </div>

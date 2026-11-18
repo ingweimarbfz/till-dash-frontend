@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart, MdStar, MdEmojiEvents, MdLocalOffer, MdTrendingUp, MdFactCheck } from 'react-icons/md'
+import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart, MdStar, MdEmojiEvents, MdLocalOffer, MdTrendingUp, MdFactCheck, MdDeliveryDining, MdStorefront } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
 import { Badge, Card, Empty, Kpi, PageHead, Spinner } from '../components/ui'
 import { formatDateTime, formatMoney, formatShort, minutesLabel } from '../utils/format'
 import { since } from './operacion/common'
-import { POSITION_LABELS } from '../utils/nav'
+import { positionLabel } from '../utils/nav'
+import { usePlan } from '../context/PlanContext'
 import { CourierHome } from './operacion/DeliveriesPage'
 
 // Ventas por hora del día (barras simples).
@@ -139,6 +140,7 @@ const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Bueno
 const Dashboard = () => {
   const { user } = useAuth()
   const { settings } = useSettings()
+  const { distributor, has } = usePlan()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   useEffect(() => { api.get('/dashboard').then(({ data: d }) => setData(d)).catch((e) => setError(errorMessage(e))) }, [])
@@ -155,8 +157,9 @@ const Dashboard = () => {
           <Kpi label="Ventas de hoy" value={formatMoney(k.salesToday)} note={`${k.ordersToday} pedidos · ticket ${formatMoney(k.avgTicket)}`} icon={MdAttachMoney} tone="brand" />
           <Kpi label="Propinas de hoy" value={formatMoney(k.tipsToday)} icon={MdLocalAtm} />
           <Kpi label="Pedidos abiertos" value={k.openOrders} icon={MdReceiptLong} tone="dark" />
-          <Kpi label="Mesas ocupadas" value={`${k.occupiedTables}/${k.tables}`} icon={MdTableRestaurant} />
-          <Kpi label="Llamados de mesa" value={k.pendingCalls} icon={MdNotificationsActive} tone={k.pendingCalls ? 'warn' : ''} />
+          {!distributor && <Kpi label="Mesas ocupadas" value={`${k.occupiedTables}/${k.tables}`} icon={MdTableRestaurant} />}
+          {!distributor && has('carta_qr') && <Kpi label="Llamados de mesa" value={k.pendingCalls} icon={MdNotificationsActive} tone={k.pendingCalls ? 'warn' : ''} />}
+          {has('domicilios') && (distributor || k.deliveriesPending + k.deliveriesOnTheWay > 0) && <Link to="/domicilios" className="kpi-link"><Kpi label="Domicilios por despachar" value={k.deliveriesPending ?? 0} note={`${k.deliveriesOnTheWay ?? 0} en camino`} icon={MdDeliveryDining} tone={k.deliveriesPending ? 'warn' : ''} /></Link>}
           <Kpi label="Cajas abiertas" value={k.openSessions} icon={MdPointOfSale} />
           <Kpi label="Por cobrar" value={formatMoney(k.receivables)} icon={MdRequestQuote} />
           <Kpi label="Stock bajo / agotados" value={`${k.lowStock} / ${k.outOfStock}`} icon={MdWarningAmber} tone={k.outOfStock ? 'bad' : k.lowStock ? 'warn' : ''} />
@@ -185,7 +188,7 @@ const Dashboard = () => {
               {data.sessions.map((x) => <li key={`s${x.id}`}><span><MdLockOpen /> <strong>{x.register}</strong> <small>{x.number}{x.site ? ` · ${x.site}` : ''}</small></span><small>{since(x.openedAt)}</small></li>)}
               {!data.calls.length && !data.sessions.length && <li><small className="muted">Sin llamados ni cajas abiertas.</small></li>}
             </ul>
-            <div className="row-end" style={{ padding: '0 16px 14px' }}><Link to="/mesas" className="btn btn-sm">Mesas</Link><Link to="/caja" className="btn btn-sm">Caja</Link></div>
+            <div className="row-end" style={{ padding: '0 16px 14px' }}>{distributor ? <Link to="/domicilios" className="btn btn-sm">Domicilios</Link> : <Link to="/mesas" className="btn btn-sm">Mesas</Link>}<Link to="/caja" className="btn btn-sm">Caja</Link></div>
           </Card>
         </div>
         <ShiftsAndProducts data={data} />
@@ -266,25 +269,27 @@ const Dashboard = () => {
     const cashier = pos.includes('cajero')
     return (
       <div className="stack">
-        <PageHead title={`${greeting()}, ${user.name}`} subtitle={[data.site, data.positions.map((p) => POSITION_LABELS[p]).join(' · ')].filter(Boolean).join(' · ')} />
+        <PageHead title={`${greeting()}, ${user.name}`} subtitle={[data.site, data.positions.map((p) => positionLabel(p, distributor)).join(' · ')].filter(Boolean).join(' · ')} />
         {pos.includes('domiciliario') && <CourierHome />}
         <div className="kpis">
           {sells && <Kpi label="Mis ventas de hoy" value={formatMoney(ek.mySalesToday)} note={`${ek.myOrdersToday} pedidos cobrados`} icon={MdAttachMoney} tone="brand" />}
           {sells && <Kpi label="Mis propinas de hoy" value={formatMoney(ek.myTipsToday)} icon={MdLocalAtm} />}
           {sells && <Kpi label="Mis pedidos abiertos" value={ek.myOpenOrders} icon={MdReceiptLong} tone="dark" />}
-          {sells && <Kpi label="Llamados de mesa" value={ek.pendingCalls} icon={MdNotificationsActive} tone={ek.pendingCalls ? 'warn' : ''} />}
+          {sells && !distributor && <Kpi label="Llamados de mesa" value={ek.pendingCalls} icon={MdNotificationsActive} tone={ek.pendingCalls ? 'warn' : ''} />}
           {kitchen && <Kpi label="Comandas por empezar" value={ek.kitchenPending} icon={MdSoupKitchen} tone={ek.kitchenPending ? 'warn' : 'brand'} />}
           {kitchen && <Kpi label="En preparación" value={ek.kitchenPreparing} icon={MdSoupKitchen} />}
           <Kpi label="Mis movimientos hoy" value={ek.myActivityToday} icon={MdTimeline} />
         </div>
         <div className="row wrap" style={{ gap: 10 }}>
-          {sells && <Link to="/mesas" className="btn btn-primary"><MdTableRestaurant /> Ir a las mesas</Link>}
+          {sells && !distributor && <Link to="/mesas" className="btn btn-primary"><MdTableRestaurant /> Ir a las mesas</Link>}
+          {sells && distributor && <Link to="/domicilios" className="btn btn-primary"><MdDeliveryDining /> Ir a los domicilios</Link>}
+          {sells && distributor && has('clientes') && <Link to="/clientes" className="btn"><MdStorefront /> Clientes</Link>}
           {kitchen && <Link to="/comandas" className="btn btn-primary"><MdSoupKitchen /> Ver comandas</Link>}
           {cashier && <Link to="/caja" className="btn"><MdPointOfSale /> {data.session ? `Caja abierta: ${data.session.register} (${data.session.number})` : 'Abrir caja'}</Link>}
         </div>
         <div className="grid grid-2">
           {sells && (
-            <Card title="Mis mesas y pedidos" icon={<MdTableRestaurant />} subtitle={data.myTables?.length ? `${data.myTables.length} abiertos` : null} flush>
+            <Card title={distributor ? 'Mis pedidos abiertos' : 'Mis mesas y pedidos'} icon={<MdTableRestaurant />} subtitle={data.myTables?.length ? `${data.myTables.length} abiertos` : null} flush>
               {!data.myTables?.length ? <Empty icon={<MdTableRestaurant />}>No tienes pedidos abiertos.</Empty> : (
                 <ul className="list padded">{data.myTables.map((t) => (
                   <li key={t.id}>

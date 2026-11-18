@@ -194,7 +194,7 @@ const AppLayout = () => {
         </main>
         {searching && <SearchPalette onClose={() => setSearching(false)} />}
         {user.role !== 'cliente' && <StockAlerts key={site || 'all'} />}
-        {plan.has('carta_qr') && (admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host'].includes(p)))) && <TableCalls key={`calls-${site || 'all'}`} />}
+        {plan.has('carta_qr') && plan.has('mesas') && (admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host'].includes(p)))) && <TableCalls key={`calls-${site || 'all'}`} />}
       </div>
     </div>
   )

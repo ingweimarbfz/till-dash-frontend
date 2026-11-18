@@ -5,6 +5,8 @@ import api, { errorMessage } from '../../api/client'
 import { useSettings } from '../../context/SettingsContext'
 import { Empty, Field, Modal, Spinner } from '../../components/ui'
 import { MoneyInput } from '../../components/forms'
+import { usePlan } from '../../context/PlanContext'
+import CustomerPicker from '../clientes/CustomerPicker'
 
 export const DELIVERY_PAY = [['efectivo', 'Efectivo al domiciliario'], ['transferencia', 'Transferencia'], ['nequi', 'Nequi'], ['daviplata', 'Daviplata'], ['tarjeta', 'Tarjeta (datáfono)']]
 
@@ -15,8 +17,13 @@ export const ALIAS_MAX = 40
 const ALIAS_IDEAS = ['Chica de rojo', 'Solo hombres', 'Cumpleaños', 'Pareja', 'Ejecutivos']
 
 // ---------- Abrir mesa (con alias opcional) o pedido para llevar / domicilio ----------
-export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened, inline = false }) => {
+export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened, inline = false, customer = null }) => {
   const { settings } = useSettings()
+  const { has, distributor } = usePlan()
+  // Cliente del directorio (plan con clientes): completa los datos; si no se elige, se puede guardar el nuevo.
+  const withCustomers = !table && has('clientes')
+  const [cust, setCust] = useState(null)
+  const [saveCustomer, setSaveCustomer] = useState(distributor)
   const suggestedFee = Number(settings.deliveryFeeDefault) || 0
   const [fee, setFee] = useState({ on: suggestedFee > 0, value: suggestedFee || '' })
   // Cómo paga el cliente el domicilio: efectivo al domiciliario u otro medio (antes de enviar o al llegar, según Configuración).
@@ -26,6 +33,14 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
+  const pickCustomer = (c) => {
+    setCust(c)
+    if (!c) return
+    setF((x) => ({ ...x, customerName: c.name, customerPhone: c.phone || '', customerAddress: [c.address, c.neighborhood].filter(Boolean).join(', ') }))
+    if (c.deliveryFee !== null && c.deliveryFee !== undefined) setFee({ on: c.deliveryFee > 0, value: c.deliveryFee || '' })
+    if (c.payMethod && DELIVERY_PAY.some(([k]) => k === c.payMethod)) setPay((x) => ({ ...x, method: c.payMethod }))
+  }
+  useEffect(() => { if (customer) pickCustomer(customer) }, [customer]) // eslint-disable-line react-hooks/exhaustive-deps
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (type === 'domicilio' && !f.customerAddress.trim()) return setError('Escribe la dirección del domicilio.')
@@ -33,14 +48,15 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
     if (type === 'domicilio' && !pay.method) return setError('Pregúntale al cliente cómo va a pagar.')
     setSaving(true)
     try {
-      const { data } = await api.post('/pedidos', { type, tableId: table?.id, siteId, alias: f.alias, guests: Number(f.guests) || undefined, customerName: f.customerName, customerPhone: f.customerPhone, customerAddress: f.customerAddress, note: f.note, deliveryFee: type === 'domicilio' && fee.on ? Number(fee.value) : undefined, deliveryPayMethod: type === 'domicilio' ? pay.method : undefined, deliveryCashWith: type === 'domicilio' && pay.method === 'efectivo' && pay.cashWith !== '' ? Number(pay.cashWith) : undefined })
+      const { data } = await api.post('/pedidos', { type, tableId: table?.id, siteId, alias: f.alias, guests: Number(f.guests) || undefined, customerName: f.customerName, customerPhone: f.customerPhone, customerAddress: f.customerAddress, note: f.note, customerId: cust?.id, saveCustomer: withCustomers && !cust && saveCustomer && Boolean(f.customerName.trim()), deliveryFee: type === 'domicilio' && fee.on ? Number(fee.value) : undefined, deliveryPayMethod: type === 'domicilio' ? pay.method : undefined, deliveryCashWith: type === 'domicilio' && pay.method === 'efectivo' && pay.cashWith !== '' ? Number(pay.cashWith) : undefined })
       onOpened(data)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
-  const title = table ? `Abrir ${table.name}` : type === 'domicilio' ? 'Nuevo domicilio' : 'Pedido para llevar'
+  const title = table ? `Abrir ${table.name}` : type === 'domicilio' ? 'Nuevo domicilio' : distributor ? 'Venta para recoger' : 'Pedido para llevar'
   const footer = <><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="open-form" className="btn btn-primary" disabled={saving}>{saving && <Spinner />} {table ? 'Abrir y agregar productos' : 'Abrir pedido'}</button></>
   const form = (
       <form id="open-form" className="form-grid" onSubmit={submit} noValidate>
+        {withCustomers && <div className="span-2"><Field label="Cliente" htmlFor="ocs"><CustomerPicker value={cust} onPick={pickCustomer} autoFocus={!customer} /></Field></div>}
         {table && <div className="span-2">
           <Field label="Alias de la mesa (opcional)" htmlFor="oal" hint="Para reconocerla mientras está abierta. Se borra al cerrar la mesa.">
             <input id="oal" value={f.alias} maxLength={ALIAS_MAX} onChange={set('alias')} placeholder="Ej. chica de rojo" autoFocus />
@@ -48,7 +64,7 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
           <div className="chip-list" style={{ marginTop: 6 }}>{ALIAS_IDEAS.map((a) => <button key={a} type="button" className={`pchip sm${f.alias === a ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, alias: x.alias === a ? '' : a }))}>{a}</button>)}</div>
         </div>}
         {table && <Field label="Personas" htmlFor="og" hint={`La mesa es para ${table.seats}`}><input id="og" type="number" min="1" value={f.guests} onChange={set('guests')} /></Field>}
-        <Field label={table ? 'Nombre del cliente (opcional)' : 'Nombre del cliente'} htmlFor="on"><input id="on" value={f.customerName} onChange={set('customerName')} autoFocus={!table} /></Field>
+        <Field label={table ? 'Nombre del cliente (opcional)' : 'Nombre del cliente'} htmlFor="on"><input id="on" value={f.customerName} onChange={set('customerName')} autoFocus={!table && !withCustomers} /></Field>
         {type !== 'mesa' && <Field label="Celular" htmlFor="op"><input id="op" inputMode="tel" value={f.customerPhone} onChange={set('customerPhone')} /></Field>}
         {type === 'domicilio' && <div className="span-2"><Field label="Dirección" htmlFor="oa" required><input id="oa" value={f.customerAddress} onChange={set('customerAddress')} /></Field></div>}
         {type === 'domicilio' && <div className="span-2">
@@ -64,7 +80,8 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
           <label className="check"><input type="checkbox" checked={fee.on} onChange={(e) => setFee((x) => ({ ...x, on: e.target.checked }))} /> Cobrar el domicilio al cliente</label>
           {fee.on && <div style={{ maxWidth: 200 }}><MoneyInput value={fee.value} onChange={(v) => setFee((x) => ({ ...x, value: v }))} aria-label="Valor del domicilio" placeholder="Valor" /></div>}
         </div>}
-        <div className="span-2"><Field label="Nota" htmlFor="ot"><input id="ot" value={f.note} onChange={set('note')} placeholder="Ej. celebran un cumpleaños" /></Field></div>
+        {withCustomers && !cust && <label className="check span-2"><input type="checkbox" checked={saveCustomer} onChange={(e) => setSaveCustomer(e.target.checked)} /> Guardar como cliente para los próximos pedidos</label>}
+        <div className="span-2"><Field label="Nota" htmlFor="ot"><input id="ot" value={f.note} onChange={set('note')} placeholder={distributor ? 'Ej. dejar en portería, llamar al llegar' : 'Ej. celebran un cumpleaños'} /></Field></div>
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
   )
