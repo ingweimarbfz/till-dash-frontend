@@ -35,16 +35,18 @@ export const printTicket = ({ title, body }) => {
 const line = (l, r, cls = '') => `<tr class="${cls}"><td>${l}</td><td class="r">${r}</td></tr>`
 
 // Precuenta o tiquete de cobro. tip: valor de la propina (0 o null: el cliente no la quiso y no aparece).
-export const orderTicket = ({ o, settings, kind = 'precuenta', tip = 0, tipPct = null, discount = 0, total = null, payments = [] }) => {
+export const orderTicket = ({ o, settings, kind = 'precuenta', tip = 0, tipPct = null, discount = 0, total = null, payments = [], deliveryFee = null }) => {
+  const fee = deliveryFee ?? o.deliveryFee ?? 0
   const items = (o.items || []).filter((i) => i.status !== 'anulado')
     .map((i) => line(`${i.quantity} ${esc(i.name)}${i.courtesy ? ' (cortesía)' : ''}`, i.courtesy ? '$0' : formatMoney(i.total))).join('')
   const base = o.subtotal - (discount || o.discountTotal || 0)
-  const grand = total ?? base + (tip || 0)
+  const grand = total ?? base + (tip || 0) + fee
   const head = kind === 'precuenta' ? 'PRECUENTA' : 'CUENTA PAGADA'
   const body = `<h3>${esc(settings.businessName)}</h3><p>${head} · ${esc(o.number)}</p><p>${esc(o.table || o.typeLabel || '')} · ${new Date().toLocaleString('es-CO')}</p><hr/>
 <table>${items}</table><hr/><table>
 ${line('Subtotal', formatMoney(o.subtotal))}
 ${(discount || o.discountTotal) ? line('Descuento', `−${formatMoney(discount || o.discountTotal)}`) : ''}
+${fee > 0 ? line('Domicilio', formatMoney(fee)) : ''}
 ${tip > 0 ? line(`Propina${tipPct ? ` (${tipPct} %)` : ''}`, formatMoney(tip)) : ''}
 ${line(tip > 0 ? 'Total con propina' : 'Total', formatMoney(grand), 'big')}
 ${payments.map((p) => line(esc(p.label), formatMoney(p.amount))).join('')}

@@ -8,6 +8,7 @@ import { Badge, Card, Empty, Kpi, PageHead, Spinner } from '../components/ui'
 import { formatDateTime, formatMoney, formatShort, minutesLabel } from '../utils/format'
 import { since } from './operacion/common'
 import { POSITION_LABELS } from '../utils/nav'
+import { CourierHome } from './operacion/DeliveriesPage'
 
 // Ventas por hora del día (barras simples).
 const HourBars = ({ data }) => {
@@ -212,6 +213,7 @@ const Dashboard = () => {
     return (
       <div className="stack">
         <PageHead title={`${greeting()}, ${user.name}`} subtitle={[data.site, data.positions.map((p) => POSITION_LABELS[p]).join(' · ')].filter(Boolean).join(' · ')} />
+        {pos.includes('domiciliario') && <CourierHome />}
         <div className="kpis">
           {sells && <Kpi label="Mis ventas de hoy" value={formatMoney(ek.mySalesToday)} note={`${ek.myOrdersToday} pedidos cobrados`} icon={MdAttachMoney} tone="brand" />}
           {sells && <Kpi label="Mis propinas de hoy" value={formatMoney(ek.myTipsToday)} icon={MdLocalAtm} />}

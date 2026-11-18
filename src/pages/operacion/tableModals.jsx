@@ -4,6 +4,7 @@ import { MdPeople, MdPrint, MdDownload, MdRefresh, MdLabel } from 'react-icons/m
 import api, { errorMessage } from '../../api/client'
 import { useSettings } from '../../context/SettingsContext'
 import { Empty, Field, Modal, Spinner } from '../../components/ui'
+import { MoneyInput } from '../../components/forms'
 
 // El QR lleva la dirección pública de la app (VITE_PUBLIC_APP_URL): así funciona aunque el sistema se use desde localhost.
 export const PUBLIC_APP_URL = (import.meta.env.VITE_PUBLIC_APP_URL || 'https://till-dash.vercel.app').replace(/\/$/, '')
@@ -13,6 +14,9 @@ const ALIAS_IDEAS = ['Chica de rojo', 'Solo hombres', 'Cumpleaños', 'Pareja', '
 
 // ---------- Abrir mesa (con alias opcional) o pedido para llevar / domicilio ----------
 export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened, inline = false }) => {
+  const { settings } = useSettings()
+  const suggestedFee = Number(settings.deliveryFeeDefault) || 0
+  const [fee, setFee] = useState({ on: suggestedFee > 0, value: suggestedFee || '' })
   const [f, setF] = useState({ alias: '', guests: table ? String(Math.min(table.seats, 2)) : '', customerName: '', customerPhone: '', customerAddress: '', note: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -20,9 +24,10 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (type === 'domicilio' && !f.customerAddress.trim()) return setError('Escribe la dirección del domicilio.')
+    if (type === 'domicilio' && fee.on && !(Number(fee.value) > 0)) return setError('Escribe el valor del domicilio o desmarca la casilla.')
     setSaving(true)
     try {
-      const { data } = await api.post('/pedidos', { type, tableId: table?.id, siteId, alias: f.alias, guests: Number(f.guests) || undefined, customerName: f.customerName, customerPhone: f.customerPhone, customerAddress: f.customerAddress, note: f.note })
+      const { data } = await api.post('/pedidos', { type, tableId: table?.id, siteId, alias: f.alias, guests: Number(f.guests) || undefined, customerName: f.customerName, customerPhone: f.customerPhone, customerAddress: f.customerAddress, note: f.note, deliveryFee: type === 'domicilio' && fee.on ? Number(fee.value) : undefined })
       onOpened(data)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
@@ -40,6 +45,10 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
         <Field label={table ? 'Nombre del cliente (opcional)' : 'Nombre del cliente'} htmlFor="on"><input id="on" value={f.customerName} onChange={set('customerName')} autoFocus={!table} /></Field>
         {type !== 'mesa' && <Field label="Celular" htmlFor="op"><input id="op" inputMode="tel" value={f.customerPhone} onChange={set('customerPhone')} /></Field>}
         {type === 'domicilio' && <div className="span-2"><Field label="Dirección" htmlFor="oa" required><input id="oa" value={f.customerAddress} onChange={set('customerAddress')} /></Field></div>}
+        {type === 'domicilio' && <div className="span-2 fee-row">
+          <label className="check"><input type="checkbox" checked={fee.on} onChange={(e) => setFee((x) => ({ ...x, on: e.target.checked }))} /> Cobrar el domicilio al cliente</label>
+          {fee.on && <div style={{ maxWidth: 200 }}><MoneyInput value={fee.value} onChange={(v) => setFee((x) => ({ ...x, value: v }))} aria-label="Valor del domicilio" placeholder="Valor" /></div>}
+        </div>}
         <div className="span-2"><Field label="Nota" htmlFor="ot"><input id="ot" value={f.note} onChange={set('note')} placeholder="Ej. celebran un cumpleaños" /></Field></div>
         {error && <div className="alert bad span-2">{error}</div>}
       </form>

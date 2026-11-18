@@ -82,6 +82,9 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
   const [note, setNote] = useState('')
   const [staff, setStaff] = useState(null)
   const [tips, setTips] = useState({})
+  // Domiciliarios: su parte de los domicilios cobrados en el turno más las propinas de sus entregas.
+  const [cour, setCour] = useState(null)
+  const [courPay, setCourPay] = useState({})
   const [showAll, setShowAll] = useState(false)
   const [force, setForce] = useState(false)
   const [error, setError] = useState('')
@@ -91,11 +94,15 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
       setStaff(data)
       setTips(Object.fromEntries(data.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested])))
     }).catch(() => setStaff({ total: 0, employees: [] }))
+    api.get(`/caja/turnos/${session.id}/domiciliarios`).then(({ data }) => {
+      setCour(data); setCourPay(Object.fromEntries(data.rows.map((r) => [r.userId, r.suggested])))
+    }).catch(() => setCour({ rows: [], total: 0 }))
   }, [session.id])
+  const courTotal = Object.values(courPay).reduce((a, v) => a + (Number(v) || 0), 0)
   const tipTotal = Object.values(tips).reduce((a, v) => a + (Number(v) || 0), 0)
   const cnt = counted === '' ? null : Number(counted)
   const diff = cnt === null ? null : cnt - summary.expectedCash
-  const toVault = cnt === null ? null : cnt - tipTotal - (Number(nextFloat) || 0)
+  const toVault = cnt === null ? null : cnt - tipTotal - courTotal - (Number(nextFloat) || 0)
   const picked = Object.keys(tips).map(Number)
   const shown = staff ? staff.employees.filter((x) => showAll || x.served || picked.includes(x.id)) : []
   const toggle = (id) => setTips((t) => { const n = { ...t }; if (id in n) delete n[id]; else n[id] = ''; return n })
@@ -125,10 +132,10 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (cnt === null) return setError('Cuenta el efectivo y escribe el total.')
-    if (toVault < 0) return setError('El efectivo contado no alcanza para las propinas y la base. Ajusta los valores.')
+    if (toVault < 0) return setError('El efectivo contado no alcanza para las propinas, los domiciliarios y la base. Ajusta los valores.')
     setSaving(true)
     try {
-      const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, tips: Object.entries(tips).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), note, force })
+      const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, tips: Object.entries(tips).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), couriers: Object.entries(courPay).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), note, force })
       onDone(data)
     } catch (err) {
       const msg = errorMessage(err); setError(msg); setSaving(false)
@@ -193,6 +200,19 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
             <div className="row-between"><span className="muted">Total a pagar en efectivo</span><strong className="money">{formatMoney(tipTotal)}</strong></div>
             {tipTotal > summary.tips && <small className="text-warn">Repartes más de lo que dejaron de propina en el turno.</small>}
           </>}
+          {cour?.rows.length > 0 && (
+            <div className="courier-close">
+              <h5>🛵 Domiciliarios <small className="muted">· {cour.rule.mode === 'todo' ? 'les toca todo el domicilio' : `les toca el ${cour.rule.percent} % del domicilio`} + propinas de sus entregas</small></h5>
+              <ul className="tip-list">{cour.rows.map((r) => (
+                <li key={r.userId} className="on">
+                  <span><strong>{r.name}</strong><small className="block muted">{r.deliveries} domicilio{r.deliveries === 1 ? '' : 's'} · {formatMoney(r.share)} de {formatMoney(r.fees)} en domicilios{r.tips > 0 ? ` · ${formatMoney(r.tips)} propinas` : ''}</small></span>
+                  <MoneyInput id={`cour-${r.userId}`} value={courPay[r.userId] ?? ''} onChange={(v) => setCourPay((t) => ({ ...t, [r.userId]: v }))} aria-label={`Pago a ${r.name}`} />
+                </li>
+              ))}</ul>
+              <div className="row-between"><span className="muted">Total a domiciliarios en efectivo</span><strong className="money">{formatMoney(courTotal)}</strong></div>
+              {cour.businessShare > 0 && <small className="muted">Al negocio le quedan {formatMoney(cour.businessShare)} de los domicilios.</small>}
+            </div>
+          )}
         </section>
 
         <section className="close-step">
@@ -201,7 +221,7 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
           <div className={`vault-box${toVault !== null && toVault < 0 ? ' bad' : ''}`}>
             <span>Pasa a la bóveda</span>
             <strong>{toVault === null ? '—' : formatMoney(toVault)}</strong>
-            <small>{cnt === null ? 'Escribe el efectivo contado' : `${formatMoney(cnt)} contado − ${formatMoney(tipTotal)} propinas − ${formatMoney(Number(nextFloat) || 0)} base`}</small>
+            <small>{cnt === null ? 'Escribe el efectivo contado' : `${formatMoney(cnt)} contado − ${formatMoney(tipTotal)} propinas${courTotal ? ` − ${formatMoney(courTotal)} domiciliarios` : ''} − ${formatMoney(Number(nextFloat) || 0)} base`}</small>
           </div>
           <Field label="Observaciones del cierre" htmlFor="cn"><textarea id="cn" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. faltante por un billete falso, se pagó el hielo con caja" /></Field>
         </section>
@@ -357,9 +377,11 @@ const SessionView = ({ id, canClose, onChanged }) => {
           </dl>}
           {!open && <dl className="order-totals" style={{ marginTop: 12 }}>
             <div><dt>Propinas pagadas</dt><dd>{formatMoney(s.tipsPaid)}</dd></div>
+            {s.couriersPaid > 0 && <div><dt>Pagado a domiciliarios</dt><dd>{formatMoney(s.couriersPaid)}</dd></div>}
             <div><dt>Quedó en caja para el próximo turno</dt><dd>{formatMoney(s.nextFloat)}</dd></div>
           </dl>}
           {!open && m.tipPayouts?.length > 0 && <ul className="list" style={{ marginTop: 8 }}>{m.tipPayouts.map((t) => <li key={t.id}><span>🤝 {t.name}</span><span className="money">{formatMoney(t.amount)}</span></li>)}</ul>}
+          {!open && m.courierPayouts?.length > 0 && <ul className="list" style={{ marginTop: 8 }}>{m.courierPayouts.map((t) => <li key={t.id}><span>🛵 {t.name} <small className="muted">{t.deliveries} domicilio{t.deliveries === 1 ? '' : 's'}</small></span><span className="money">{formatMoney(t.amount)}</span></li>)}</ul>}
           {!open && s.closeNote && <p className="hint">📝 {s.closeNote}</p>}
         </Card>
       </div>

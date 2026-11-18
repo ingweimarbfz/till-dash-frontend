@@ -24,6 +24,11 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const [tipOn, setTipOn] = useState(Boolean(tipWanted))
   const [tipMode, setTipMode] = useState('pct')
   const [tipCustom, setTipCustom] = useState('')
+  // Domicilio: se cobra o no, con un valor que se escribe a mano (precargado con el del pedido o el sugerido).
+  const isDelivery = order.type === 'domicilio'
+  const suggestedFee = Number(order.deliveryFee) || Number(settings.deliveryFeeDefault) || 0
+  const [feeOn, setFeeOn] = useState(isDelivery && suggestedFee > 0)
+  const [feeValue, setFeeValue] = useState(suggestedFee || '')
   const [pays, setPays] = useState([{ method: 'efectivo', amount: '', received: '', reference: '' }])
   const [cxc, setCxc] = useState({ customerName: order.customerName || '', customerDoc: '', customerPhone: order.customerPhone || '', dueDate: '' })
   const [error, setError] = useState('')
@@ -42,7 +47,8 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const discountTotal = !disc ? 0 : disc.type === 'porcentaje' ? round(order.subtotal * disc.value / 100) : Math.min(round(disc.value), order.subtotal)
   const base = order.subtotal - discountTotal
   const tip = !tipOn ? 0 : tipMode === 'pct' ? round(base * tipPct / 100) : round(tipCustom)
-  const total = base + tip
+  const fee = isDelivery && feeOn ? round(feeValue) : 0
+  const total = base + tip + fee
   const paid = pays.reduce((a, p) => a + round(p.amount), 0)
   const left = total - paid
   const hasCxc = pays.some((p) => p.method === 'cuenta_por_cobrar')
@@ -59,24 +65,25 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
     e.preventDefault(); setError('')
     if (left !== 0) return setError(left > 0 ? `Faltan ${formatMoney(left)} por asignar a una forma de pago.` : `Los pagos superan el total en ${formatMoney(-left)}.`)
     if (disc?.requiresReason && !reason.trim()) return setError(`Escribe el motivo del descuento "${disc.name}".`)
+    if (isDelivery && feeOn && !(fee > 0)) return setError('Escribe el valor del domicilio o desmarca la casilla.')
     if (hasCxc && !cxc.customerName.trim()) return setError('Escribe a nombre de quién queda la cuenta por cobrar.')
     const needsSession = pays.some((p) => p.method !== 'cuenta_por_cobrar')
     if (needsSession && !sessionId) return setError('No hay un turno de caja abierto en esta sucursal.')
     setSaving(true)
     try {
       const { data } = await api.post(`/pedidos/${order.id}/cobrar`, {
-        sessionId: Number(sessionId) || undefined, tip, discountId: disc?.id, discountReason: reason,
+        sessionId: Number(sessionId) || undefined, tip, deliveryFee: isDelivery ? fee : undefined, discountId: disc?.id, discountReason: reason,
         payments: pays.map((p) => ({ method: p.method, amount: round(p.amount), received: p.method === 'efectivo' && p.received !== '' ? round(p.received) : undefined, reference: p.reference })),
         receivable: hasCxc ? cxc : undefined
       })
-      setDone({ ...data, tip, discount: discountTotal, total, payments: pays.map((p) => ({ label: PAY_METHODS[p.method] || p.method, amount: round(p.amount) })) })
+      setDone({ ...data, tip, fee, discount: discountTotal, total, payments: pays.map((p) => ({ label: PAY_METHODS[p.method] || p.method, amount: round(p.amount) })) })
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
 
   if (done) {
     return (
       <Modal title={`Pedido ${done.number} cobrado`} onClose={() => onCharged(done)}
-        footer={<><button type="button" className="btn" onClick={() => orderTicket({ o: order, settings, kind: 'cuenta', tip: done.tip, tipPct: tipMode === 'pct' ? tipPct : null, discount: done.discount, total: done.total, payments: done.payments })}><MdPrint /> Imprimir tiquete</button><button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button></>}>
+        footer={<><button type="button" className="btn" onClick={() => orderTicket({ o: order, settings, kind: 'cuenta', tip: done.tip, tipPct: tipMode === 'pct' ? tipPct : null, discount: done.discount, deliveryFee: done.fee, total: done.total, payments: done.payments })}><MdPrint /> Imprimir tiquete</button><button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button></>}>
         <div className="charge-done">
           <span className="charge-ok"><MdPointOfSale /></span>
           <strong>{formatMoney(done.total)}</strong>
@@ -98,6 +105,15 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
             <Field label="Descuento" htmlFor="cd"><select id="cd" value={discountId} onChange={(e) => setDiscountId(e.target.value)}><option value="">Sin descuento</option>{discounts.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type === 'porcentaje' ? `${d.value} %` : formatMoney(d.value)})</option>)}</select></Field>
             {disc ? <Field label="Motivo" htmlFor="cr" required={disc.requiresReason}><input id="cr" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={disc.description || ''} /></Field> : <span />}
           </div>
+          {isDelivery && (
+            <div className="tip-box">
+              <label className={`check-card${feeOn ? ' on' : ''}`}>
+                <input type="checkbox" checked={feeOn} onChange={(e) => setFeeOn(e.target.checked)} />
+                <span><b>Cobrar el domicilio</b><small>{feeOn ? 'Se suma a la cuenta. No le aplica el descuento.' : 'Sin marcar, el domicilio no se le cobra al cliente.'}</small></span>
+              </label>
+              {feeOn && <div style={{ maxWidth: 200, marginTop: 8 }}><Field label="Valor del domicilio" htmlFor="cdf"><MoneyInput id="cdf" value={feeValue} onChange={setFeeValue} /></Field></div>}
+            </div>
+          )}
           <div className="tip-box">
             <label className={`check-card${tipOn ? ' on' : ''}`}>
               <input type="checkbox" checked={tipOn} onChange={(e) => setTipOn(e.target.checked)} />
@@ -144,6 +160,7 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
             <div><dt>Consumo</dt><dd>{formatMoney(order.gross)}</dd></div>
             {order.courtesyTotal > 0 && <div><dt>Cortesías</dt><dd>−{formatMoney(order.courtesyTotal)}</dd></div>}
             {discountTotal > 0 && <div><dt>Descuento</dt><dd>−{formatMoney(discountTotal)}</dd></div>}
+            {fee > 0 && <div><dt>Domicilio</dt><dd>{formatMoney(fee)}</dd></div>}
             {tip > 0 && <div><dt>Propina</dt><dd>{formatMoney(tip)}</dd></div>}
             <div className="total"><dt>Total</dt><dd>{formatMoney(total)}</dd></div>
             <div className={left === 0 ? 'ok' : 'bad'}><dt>{left >= 0 ? 'Por asignar' : 'Sobra'}</dt><dd>{formatMoney(Math.abs(left))}</dd></div>

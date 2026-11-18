@@ -10,6 +10,7 @@ import { formatDateTime, formatMoney } from '../../utils/format'
 import { AREA_LABEL, ITEM_STATUS, ITEM_TONE, ORDER_STATUS, ORDER_TONE, PAY_METHODS, Qty, since, useCan } from './common'
 import ChargeModal from './ChargeModal'
 import { orderTicket } from '../../utils/ticket'
+import { DeliveryBox } from './DeliveriesPage'
 import { AliasModal, MoveModal } from './tableModals'
 
 // Motivo obligatorio para cortesías y anulaciones.
@@ -186,6 +187,7 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
           )}
 
           {showOrder && <>
+          {o.type === 'domicilio' && o.status !== 'anulado' && <DeliveryBox order={o} canAssign={seller} onChanged={load} />}
           <Card title="Pedido" subtitle={`${live.length} producto${live.length === 1 ? '' : 's'}`} flush>
             {!live.length ? <Empty icon={<MdNotes />}>{open ? 'Toca los productos de la carta para agregarlos.' : 'Sin productos.'}</Empty> : (
               <ul className="order-items">{live.map((i) => (
@@ -207,6 +209,7 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
               <div><dt>Consumo</dt><dd>{formatMoney(o.gross)}</dd></div>
               {o.courtesyTotal > 0 && <div><dt>Cortesías</dt><dd>−{formatMoney(o.courtesyTotal)}</dd></div>}
               {o.discountTotal > 0 && <div><dt>Descuento {o.discount?.name}</dt><dd>−{formatMoney(o.discountTotal)}</dd></div>}
+              {o.deliveryFee > 0 && <div><dt>Domicilio</dt><dd>{formatMoney(o.deliveryFee)}</dd></div>}
               {o.tip > 0 && <div><dt>Propina</dt><dd>{formatMoney(o.tip)}</dd></div>}
               <div className="total"><dt>Total</dt><dd>{formatMoney(o.total)}</dd></div>
             </dl>
