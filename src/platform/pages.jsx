@@ -253,6 +253,16 @@ const OrgForm = ({ initial, cat, plans, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false)
   const set = (k, v) => setF((x) => ({ ...x, [k]: v }))
   const setA = (k, v) => setF((x) => ({ ...x, admin: { ...x.admin, [k]: v } }))
+  // Al editar se cargan los datos del super administrador; la contraseña no se puede ver, solo cambiar.
+  const [adminState, setAdminState] = useState(editing ? 'loading' : 'new') // loading | found | missing | new | error
+  useEffect(() => {
+    if (!editing) return
+    papi.get(`/plataforma/organizaciones/${initial.id}/admin`).then(({ data }) => {
+      const a = data.admin
+      setF((x) => ({ ...x, admin: a ? { ...a, resetPassword: false, newPassword: '' } : { identification: '', name: '', lastName: '', username: '', email: '', phone: '', resetPassword: false, newPassword: '' } }))
+      setAdminState(a ? 'found' : 'missing')
+    }).catch(() => setAdminState('error'))
+  }, [editing, initial?.id])
   const country = cat.countries.find((c) => c.code === f.countryCode)
   const plan = plans.find((p) => p.id === Number(f.planId))
   const price = plan?.prices.find((x) => x.country === f.countryCode)
@@ -261,6 +271,8 @@ const OrgForm = ({ initial, cat, plans, onClose, onSaved }) => {
     setSaving(true); setError('')
     try {
       const body = { ...f, planId: f.planId ? Number(f.planId) : null }
+      // Sin super administrador y sin datos escritos, no se toca.
+      if (editing && (adminState === 'loading' || adminState === 'error' || (adminState === 'missing' && !f.admin?.username))) delete body.admin
       const { data } = editing ? await papi.put(`/plataforma/organizaciones/${initial.id}`, body) : await papi.post('/plataforma/organizaciones', body)
       onSaved(data, editing)
     } catch (e) { setError(errorMessage(e)); setSaving(false) }
@@ -304,20 +316,29 @@ const OrgForm = ({ initial, cat, plans, onClose, onSaved }) => {
           )}
           <Field label="Notas internas" htmlFor="ono"><textarea id="ono" rows={2} value={f.notes || ''} onChange={(e) => set('notes', e.target.value)} /></Field>
         </div>
-        {!editing && (
-          <div className="plt-section">
+        <div className="plt-section">
             <h4>Super administrador del establecimiento</h4>
-            <small className="hint">Entra a la app con su usuario y su número de documento como contraseña; después la puede cambiar.</small>
-            <div className="form-grid">
+            {!editing || adminState === 'missing'
+              ? <small className="hint">{editing ? 'Este establecimiento no tiene super administrador. Llena sus datos para crearlo: ' : ''}Entra a la app con su usuario y su número de documento como contraseña; después la puede cambiar.</small>
+              : adminState === 'loading' ? <Spinner />
+              : adminState === 'error' ? <div className="alert bad">No se pudieron cargar los datos del super administrador.</div>
+              : <small className="hint">La contraseña no se puede ver. Puedes dejarla otra vez en su número de documento o escribir una nueva.{f.admin.lastLoginAt ? ` Último ingreso: ${new Date(f.admin.lastLoginAt).toLocaleString('es-CO')}.` : ' Aún no ha ingresado.'}</small>}
+            {(!editing || adminState === 'found' || adminState === 'missing') && <div className="form-grid">
               <Field label="Documento" required htmlFor="ai"><input id="ai" inputMode="numeric" minLength={5} maxLength={15} value={f.admin.identification} onChange={(e) => setA('identification', e.target.value)} /></Field>
               <Field label="Usuario" required htmlFor="au"><input id="au" value={f.admin.username} onChange={(e) => setA('username', e.target.value.toLowerCase())} placeholder="nombre.apellido" /></Field>
               <Field label="Nombres" required htmlFor="an"><input id="an" data-only="letters" value={f.admin.name} onChange={(e) => setA('name', e.target.value)} /></Field>
               <Field label="Apellidos" htmlFor="al"><input id="al" data-only="letters" value={f.admin.lastName} onChange={(e) => setA('lastName', e.target.value)} /></Field>
               <Field label="Correo" htmlFor="ae"><input id="ae" type="email" value={f.admin.email} onChange={(e) => setA('email', e.target.value)} /></Field>
               <Field label="Teléfono" htmlFor="ap"><input id="ap" inputMode="numeric" minLength={7} maxLength={10} value={f.admin.phone} onChange={(e) => setA('phone', e.target.value)} /></Field>
-            </div>
+              {editing && adminState === 'found' && <>
+                <Field label="Nueva contraseña" htmlFor="anp" hint="Vacío: no cambia. Mínimo 6 caracteres."><input id="anp" type="text" autoComplete="new-password" value={f.admin.newPassword || ''} disabled={f.admin.resetPassword} onChange={(e) => setA('newPassword', e.target.value)} /></Field>
+                <div className="stack" style={{ gap: 6, alignSelf: 'end' }}>
+                  <label className="check"><input type="checkbox" checked={!!f.admin.resetPassword} onChange={(e) => setF((x) => ({ ...x, admin: { ...x.admin, resetPassword: e.target.checked, newPassword: '' } }))} /> Dejar la contraseña en su número de documento</label>
+                  <label className="check"><input type="checkbox" checked={f.admin.active !== false} onChange={(e) => setA('active', e.target.checked)} /> Usuario activo</label>
+                </div>
+              </>}
+            </div>}
           </div>
-        )}
         {error && <div className="alert bad">{error}</div>}
       </div>
     </Modal>
@@ -377,7 +398,7 @@ export const OrgsPage = () => {
         )}
       </Card>
       {legal && <OrgLegalModal org={legal} onClose={() => setLegal(null)} />}
-      {modal && <OrgForm initial={modal.id ? modal : null} cat={cat} plans={plans} onClose={() => setModal(null)} onSaved={(d, e) => { setModal(null); load(); toast(e ? 'Establecimiento actualizado' : `Establecimiento ${d.name} creado. Su administrador entra con el usuario ${d.admin?.username} y su documento.`) }} />}
+      {modal && <OrgForm initial={modal.id ? modal : null} cat={cat} plans={plans} onClose={() => setModal(null)} onSaved={(d, e) => { setModal(null); load(); toast(e ? (d.admin?.password ? `Establecimiento actualizado. ${d.admin.username} entra con: ${d.admin.password.toLowerCase()}.` : 'Establecimiento actualizado') : `Establecimiento ${d.name} creado. Su administrador entra con el usuario ${d.admin?.username} y su documento.`) }} />}
       {toastNode}
     </div>
   )
