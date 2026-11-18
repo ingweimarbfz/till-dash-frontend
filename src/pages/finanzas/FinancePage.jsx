@@ -10,6 +10,7 @@ import { Bars, Ranking, Share } from '../../components/charts'
 import { useAuth } from '../../context/AuthContext'
 import { formatDate, formatDateTime, formatMoney } from '../../utils/format'
 import { bogota, PRESETS, download } from '../../utils/range'
+import SupplierField from '../../components/SupplierField'
 
 const NO_SITE = { sede: undefined }
 const pct = (v) => (v === null || v === undefined ? '—' : `${String(v).replace('.', ',')} %`)
@@ -114,7 +115,7 @@ const TransferModal = ({ funds, initial = {}, onClose, onDone }) => {
 }
 
 const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onClose, onDone }) => {
-  const [f, setF] = useState({ category: '', description: '', supplier: '', invoiceRef: '', amount: '', paidOn: bogota(), source: 'fondo', fund: 'general', sessionId: '', partnerId: '', ...initial })
+  const [f, setF] = useState({ category: '', description: '', supplierId: null, supplier: '', invoiceRef: '', amount: '', paidOn: bogota(), source: 'fondo', fund: 'general', sessionId: '', partnerId: '', ...initial })
   const sub = funds.find((x) => x.key === f.fund && x.kind === 'subcuenta')
   const [sessions, setSessions] = useState([])
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
@@ -134,7 +135,7 @@ const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onCl
         <Field label="Categoría" htmlFor="xc" required><select id="xc" value={f.category} onChange={set('category')} autoFocus><option value="">Elige la categoría</option>{Object.entries(categories).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field label="Valor" htmlFor="xa" required><MoneyInput id="xa" value={f.amount} onChange={set('amount')} /></Field>
         <div className="span-2"><Field label="Descripción" htmlFor="xd" required><input id="xd" value={f.description} onChange={set('description')} placeholder="Ej. arriendo de noviembre, recibo de energía" /></Field></div>
-        <Field label="Proveedor" htmlFor="xs"><input id="xs" value={f.supplier} onChange={set('supplier')} /></Field>
+        <SupplierField id="xs" value={f} onChange={(v) => setF((x) => ({ ...x, ...v }))} allowFree />
         <Field label="Factura o soporte" htmlFor="xi"><input id="xi" value={f.invoiceRef} onChange={set('invoiceRef')} placeholder="N.º de factura" /></Field>
         <Field label="Fecha de pago" htmlFor="xp"><input id="xp" type="date" value={f.paidOn} max={bogota()} onChange={set('paidOn')} /></Field>
         <div />

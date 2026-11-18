@@ -7,6 +7,7 @@ import api, { errorMessage } from '../../api/client'
 import { Field, Modal, Spinner } from '../../components/ui'
 import { MoneyInput } from '../../components/forms'
 import { formatMoney } from '../../utils/format'
+import SupplierField from '../../components/SupplierField'
 
 // ---------- Unidades y cantidades ----------
 export const UNITS = { und: 'Unidad', porcion: 'Porción', botella: 'Botella', g: 'Gramos', kg: 'Kilos', ml: 'Mililitros', l: 'Litros' }
@@ -70,7 +71,10 @@ const stockIn = (p, warehouseId) => p.byWarehouse?.find((w) => w.warehouseId ===
 // ---------- Entrada, ajuste o baja de varios productos en una bodega ----------
 const MOVE_TITLES = { entrada: 'Entrada (compra)', ajuste: 'Ajuste (+ o −)', baja: 'Baja (daño, pérdida o vencimiento)' }
 export const MovementModal = ({ products, sites, warehouses, defaults = {}, onClose, onSaved }) => {
-  const [f, setF] = useState({ type: 'entrada', warehouseId: '', supplier: '', invoice: '', note: '', ...defaults })
+  const [f, setF] = useState(() => {
+    const p = defaults.productId ? products.find((x) => x.id === Number(defaults.productId)) : null
+    return { type: 'entrada', warehouseId: '', supplierId: p?.supplierId || null, supplier: p?.supplier || '', invoice: '', note: '', ...defaults }
+  })
   const [items, setItems] = useState([])
   const [pick, setPick] = useState(defaults.productId ? String(defaults.productId) : '')
   const [error, setError] = useState('')
@@ -115,7 +119,7 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
         <div className="seg seg-wrap">{Object.entries(MOVE_TITLES).map(([k, l]) => <button key={k} type="button" className={`btn btn-sm${f.type === k ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, type: k }))}>{l}</button>)}</div>
         <div className="form-grid">
           <Field label="Bodega" htmlFor="mw" required><select id="mw" value={f.warehouseId} onChange={set('warehouseId')}><option value="">Selecciona…</option><WarehouseOptions sites={sites} warehouses={warehouses} /></select></Field>
-          {f.type === 'entrada' ? <Field label="Proveedor" htmlFor="ms"><input id="ms" value={f.supplier} onChange={set('supplier')} /></Field> : <span />}
+          {f.type === 'entrada' ? <SupplierField id="ms" value={f} onChange={(v) => setF((x) => ({ ...x, ...v }))} allowFree placeholder="Sin proveedor" /> : <span />}
         </div>
         {!single && <div className="item-row">
           <select aria-label="Producto" value={pick} onChange={(e) => { setPick(e.target.value); add(e.target.value) }} style={{ flex: 1 }}>

@@ -4,6 +4,7 @@ import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Modal, Spinner } from '../../components/ui'
 import { MoneyInput } from '../../components/forms'
 import { formatDateTime, formatMoney } from '../../utils/format'
+import SupplierField from '../../components/SupplierField'
 
 // =====================================================================
 // Gastos del turno (hielo, limones, un domicilio): salen del efectivo de la caja abierta y quedan como
@@ -14,7 +15,7 @@ const NO_SITE = { params: { sede: undefined } }
 const REQ_TONE = { pendiente: 'warn', aprobada: 'ok', rechazada: 'bad' }
 
 export const ShiftExpenseModal = ({ session, info, admin, onClose, onDone, onAskFunds }) => {
-  const [f, setF] = useState({ category: 'insumos', description: '', supplier: '', amount: '' })
+  const [f, setF] = useState({ category: 'insumos', description: '', supplierId: null, supplier: '', amount: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? v.target.value : v }))
   const over = !admin && info.limit > 0 && Number(f.amount) > info.limit
@@ -31,7 +32,7 @@ export const ShiftExpenseModal = ({ session, info, admin, onClose, onDone, onAsk
         <div className="span-2 chip-list">{Object.entries(info.categories).map(([k, l]) => <button key={k} type="button" className={`pchip${f.category === k ? ' on' : ''}`} onClick={() => set('category')(k)}>{l}</button>)}</div>
         <div className="span-2"><Field label="¿Qué se compró o pagó?" htmlFor="sxd" required><input id="sxd" value={f.description} onChange={set('description')} placeholder="Ej. 2 bolsas de hielo" autoFocus /></Field></div>
         <Field label="Valor" htmlFor="sxa" required hint={info.limit > 0 ? `Tope por gasto: ${formatMoney(info.limit)}` : null}><MoneyInput id="sxa" value={f.amount} onChange={set('amount')} /></Field>
-        <Field label="Dónde (opcional)" htmlFor="sxs"><input id="sxs" value={f.supplier} onChange={set('supplier')} placeholder="Ej. tienda de la esquina" /></Field>
+        <SupplierField id="sxs" label="Proveedor o dónde (opcional)" value={f} onChange={(v) => setF((x) => ({ ...x, ...v }))} allowFree />
         {over && <div className="alert warn span-2">Supera el tope de {formatMoney(info.limit)} por gasto. Pide los recursos al administrador: cuando los apruebe entran a esta caja.</div>}
         <small className="muted span-2">Sale del efectivo de la caja y queda como gasto en Finanzas. No entra al inventario.</small>
         {error && <div className="alert bad span-2">{error}</div>}
