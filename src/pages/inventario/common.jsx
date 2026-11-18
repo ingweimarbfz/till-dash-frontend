@@ -135,13 +135,13 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
           <Field label="Bodega" htmlFor="mw" required><select id="mw" value={f.warehouseId} onChange={set('warehouseId')}><option value="">Selecciona…</option><WarehouseOptions sites={sites} warehouses={warehouses} /></select></Field>
           {f.type === 'entrada' ? <SupplierField id="ms" value={f} onChange={(v) => setF((x) => ({ ...x, ...v }))} allowFree placeholder="Sin proveedor" /> : <span />}
         </div>
-        {!single && <div className="item-row">
+        {!single && <div className="item-row pick">
           <select aria-label="Producto" value={pick} onChange={(e) => { if (e.target.value === '__new') { setNewProduct(true); return } setPick(e.target.value); add(e.target.value) }} style={{ flex: 1 }}>
             <option value="">{available.length ? 'Agregar producto…' : tracked.length ? 'Ya agregaste todos' : 'No hay productos con inventario'}</option>
             {canCreate && <option value="__new">+ Crear producto nuevo…</option>}
             <ProductOptions products={available} />
           </select>
-          {canCreate && <button type="button" className="btn" style={{ whiteSpace: 'nowrap', flex: 'none' }} onClick={() => setNewProduct(true)}><MdAdd /> Producto nuevo</button>}
+          {canCreate && <button type="button" className="btn" onClick={() => setNewProduct(true)}><MdAdd /> Producto nuevo</button>}
         </div>}
         {newProduct && <QuickProductModal supplierId={f.type === 'entrada' ? f.supplierId : null} onClose={() => setNewProduct(false)}
           onSaved={(p) => { setNewProduct(false); setCreated((c) => [...c, p]); setItems((list) => [...list, { product: p, quantity: '', unitCost: p.cost, pack: false, boxes: '', perBox: '', boxCost: '' }]) }} />}
@@ -242,12 +242,12 @@ export const TransferModal = ({ products, sites, warehouses, defaults = {}, onCl
           <Field label="Hacia" htmlFor="tt" required><select id="tt" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Bodega de destino…</option><WarehouseOptions sites={sites} warehouses={warehouses} exclude={from} /></select></Field>
         </div>
         {from && (
-          <div className="item-row">
+          <div className="item-row pick-qty">
             <select aria-label="Producto" value={pick} onChange={(e) => setPick(e.target.value)} style={{ flex: 1 }}>
               <option value="">{available.length ? 'Agregar producto…' : 'No hay más productos con existencias en esta bodega'}</option>
               <ProductOptions products={available} stockOf={inFrom} />
             </select>
-            <input aria-label="Cantidad" type="number" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Cant." style={{ width: 90 }} />
+            <input aria-label="Cantidad" type="number" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Cant." />
             <button type="button" className="btn" onClick={add} disabled={!pick}><MdAdd /> Agregar</button>
           </div>
         )}
