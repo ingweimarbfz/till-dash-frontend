@@ -104,30 +104,39 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
   const diff = cnt === null ? null : cnt - summary.expectedCash
   const toVault = cnt === null ? null : cnt - tipTotal - courTotal - (Number(nextFloat) || 0)
   const picked = Object.keys(tips).map(Number)
-  const shown = staff ? staff.employees.filter((x) => showAll || x.served || picked.includes(x.id)) : []
-  const toggle = (id) => setTips((t) => { const n = { ...t }; if (id in n) delete n[id]; else n[id] = ''; return n })
+  // Propinas para repartir: las del turno menos las de domicilios con domiciliario (a él se le pagan abajo).
+  const tipPool = staff ? Math.round(staff.total) : summary.tips
+  const courierTips = Math.max(0, summary.tips - tipPool)
+  // Quien solo es domiciliario no entra en el reparto de propinas del salón.
+  const eligible = staff ? staff.employees.filter((x) => !(x.positions.length && x.positions.every((p) => p === 'domiciliario'))) : []
+  const shown = eligible.filter((x) => showAll || x.served || picked.includes(x.id))
   // Reparto: en grupo (partes iguales, con bonificación opcional al mejor calificado) o individual (lo de sus mesas).
   const [mode, setMode] = useState('individual')
   const [bonusOn, setBonusOn] = useState(false)
   const [bonusPct, setBonusPct] = useState('20')
   const score = (x) => (x.rating ? x.rating.avg * 100 + x.rating.count : x.ratingMonth ? x.ratingMonth.avg * 100 - 1000 + x.ratingMonth.count : -1e9)
-  const groupIds = () => (picked.length ? picked : staff.employees.filter((x) => x.served).map((x) => x.id))
+  const groupIds = (ids) => ids || (picked.length > 1 ? picked : shown.map((x) => x.id))
   const best = staff && mode === 'grupo' ? staff.employees.filter((x) => groupIds().includes(x.id) && (x.rating || x.ratingMonth)).sort((a, b) => score(b) - score(a))[0] || null : null
   const split = (opts = {}) => {
-    const ids = groupIds()
+    const ids = groupIds(opts.ids)
     if (!ids.length) return
     const on = opts.bonusOn ?? bonusOn
     const pctV = Math.max(0, Math.min(200, Number(String(opts.bonusPct ?? bonusPct).replace(',', '.')) || 0))
-    const top = on && ids.length > 1 ? (opts.best ?? best) : null
+    const top = on && ids.length > 1 ? (opts.best ?? (staff.employees.filter((x) => ids.includes(x.id) && (x.rating || x.ratingMonth)).sort((a, b) => score(b) - score(a))[0] || null)) : null
     const w = ids.map((id) => (top && id === top.id ? 1 + pctV / 100 : 1))
     const sumW = w.reduce((a, x) => a + x, 0)
-    const parts = ids.map((id, i) => Math.floor(summary.tips * w[i] / sumW))
-    const rest = summary.tips - parts.reduce((a, x) => a + x, 0)
+    const parts = ids.map((id, i) => Math.floor(tipPool * w[i] / sumW))
+    const rest = tipPool - parts.reduce((a, x) => a + x, 0)
     const iTop = top ? ids.indexOf(top.id) : 0
     parts[iTop >= 0 ? iTop : 0] += rest
     setTips(Object.fromEntries(ids.map((id, i) => [id, parts[i]])))
   }
-  const toGroup = () => { setMode('grupo'); setTimeout(() => split(), 0) }
+  // En grupo, la propina se reparte entre todos los que aparecen en la lista (marca o desmarca para ajustar).
+  const toGroup = () => { setMode('grupo'); split({ ids: shown.map((x) => x.id) }) }
+  const toggle = (id) => {
+    if (mode === 'grupo') { const ids = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]; if (ids.length) split({ ids }); else setTips({}); return }
+    setTips((t) => { const n = { ...t }; if (id in n) delete n[id]; else n[id] = ''; return n })
+  }
   const toIndividual = () => { setMode('individual'); setBonusOn(false); setTips(Object.fromEntries(staff.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested]))) }
   const submit = async (e) => {
     e.preventDefault(); setError('')
@@ -172,11 +181,11 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
         </section>
 
         <section className="close-step">
-          <h4><span>2</span> Propinas <small className="muted">· {formatMoney(summary.tips)} en el turno</small></h4>
+          <h4><span>2</span> Propinas <small className="muted">· {formatMoney(tipPool)} para repartir{courierTips > 0 ? ` (+ ${formatMoney(courierTips)} de domicilios, van al domiciliario)` : ''}</small></h4>
           {!staff ? <Spinner /> : <>
             <div className="seg seg-wrap">
               <button type="button" className={`btn btn-sm${mode === 'individual' ? ' on' : ''}`} onClick={toIndividual}>Individual · según sus mesas</button>
-              <button type="button" className={`btn btn-sm${mode === 'grupo' ? ' on' : ''}`} onClick={toGroup} disabled={!summary.tips}>En grupo · partes iguales</button>
+              <button type="button" className={`btn btn-sm${mode === 'grupo' ? ' on' : ''}`} onClick={toGroup} disabled={!tipPool}>En grupo · partes iguales</button>
               {Object.keys(tips).length > 0 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setTips({})}>Ninguna</button>}
             </div>
             {mode === 'grupo' && (
@@ -197,9 +206,9 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
               ))}
               {!shown.length && <li className="muted"><small>Nadie atendió pedidos con propina en este turno.</small></li>}
             </ul>
-            {staff.employees.length > shown.length && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAll(true)}>Ver todo el personal ({staff.employees.length})</button>}
+            {eligible.length > shown.length && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAll(true)}>Ver todo el personal ({eligible.length})</button>}
             <div className="row-between"><span className="muted">Total a pagar en efectivo</span><strong className="money">{formatMoney(tipTotal)}</strong></div>
-            {tipTotal > summary.tips && <small className="text-warn">Repartes más de lo que dejaron de propina en el turno.</small>}
+            {tipTotal > tipPool && <small className="text-warn">Repartes más de lo que dejaron de propina en el turno.</small>}
           </>}
           {cour?.rows.length > 0 && (
             <div className="courier-close">
