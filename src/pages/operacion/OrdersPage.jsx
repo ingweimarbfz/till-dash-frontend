@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MdReceiptLong, MdSearch, MdShoppingBag, MdDeliveryDining } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, PageHead, Spinner } from '../../components/ui'
@@ -21,7 +21,8 @@ const OrdersPage = () => {
   const [mine, setMine] = useState(false)
   const [rows, setRows] = useState(null)
   const [error, setError] = useState('')
-  const [modal, setModal] = useState(null)
+  const [params] = useSearchParams()
+  const [modal, setModal] = useState(['llevar', 'domicilio'].includes(params.get('nuevo')) ? params.get('nuevo') : null)
   const load = useCallback(() => {
     const params = { estado: tab === 'todos' ? undefined : tab, fecha: tab === 'abierto' ? undefined : date, q: q || undefined, mios: mine ? 1 : undefined }
     api.get('/pedidos', { params }).then(({ data }) => { setRows(data); setError('') }).catch((e) => setError(errorMessage(e)))
@@ -32,7 +33,7 @@ const OrdersPage = () => {
   return (
     <div className="stack">
       <PageHead title="Pedidos" subtitle="Cada pedido lleva su consecutivo por sucursal. Toca uno para agregar productos, cobrarlo o ver el detalle.">
-        <button type="button" className={`btn${distributor && !has('domicilios') ? ' btn-primary' : ''}`} onClick={() => setModal('llevar')}><MdShoppingBag /> {distributor ? 'Para recoger' : 'Para llevar'}</button>
+        <button type="button" className={`btn${distributor && !has('domicilios') ? ' btn-primary' : ''}`} onClick={() => setModal('llevar')}><MdShoppingBag /> {distributor ? 'Venta en mostrador' : 'Para llevar'}</button>
         {has('domicilios') && <button type="button" className={`btn${distributor ? ' btn-primary' : ''}`} onClick={() => setModal('domicilio')}><MdDeliveryDining /> Domicilio</button>}
       </PageHead>
       <Tabs value={tab} onChange={setTab} tabs={[['abierto', 'Abiertos'], ['cobrado', 'Cobrados'], ['anulado', 'Anulados'], ['todos', 'Todos']]} />
@@ -50,7 +51,7 @@ const OrdersPage = () => {
             <tbody>{rows.map((o) => (
               <tr key={o.id} onClick={() => navigate(`/pedidos/${o.id}`)} style={{ cursor: 'pointer' }}>
                 <td><strong>{o.number}</strong>{o.site && <small className="block muted">{o.site}</small>}</td>
-                <td>{o.table || (distributor && o.type === 'llevar' ? 'Para recoger' : o.typeLabel)}{(o.alias || o.customerName) && <small className="block muted">{[o.alias, o.customerName].filter(Boolean).join(' · ')}</small>}</td>
+                <td>{o.table || (distributor && o.type === 'llevar' ? 'Mostrador' : o.typeLabel)}{(o.alias || o.customerName) && <small className="block muted">{[o.alias, o.customerName].filter(Boolean).join(' · ')}</small>}</td>
                 <td className="hide-sm">{o.waiter?.name || '—'}</td>
                 <td className="hide-md"><small>{o.status === 'abierto' ? since(o.openedAt) : formatDateTime(o.openedAt)}</small></td>
                 <td className="num">{o.itemCount}</td>

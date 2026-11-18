@@ -52,7 +52,7 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
       onOpened(data)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
-  const title = table ? `Abrir ${table.name}` : type === 'domicilio' ? 'Nuevo domicilio' : distributor ? 'Venta para recoger' : 'Pedido para llevar'
+  const title = table ? `Abrir ${table.name}` : type === 'domicilio' ? 'Nuevo domicilio' : distributor ? 'Venta en mostrador' : 'Pedido para llevar'
   const footer = <><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="open-form" className="btn btn-primary" disabled={saving}>{saving && <Spinner />} {table ? 'Abrir y agregar productos' : 'Abrir pedido'}</button></>
   const form = (
       <form id="open-form" className="form-grid" onSubmit={submit} noValidate>
@@ -64,7 +64,7 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
           <div className="chip-list" style={{ marginTop: 6 }}>{ALIAS_IDEAS.map((a) => <button key={a} type="button" className={`pchip sm${f.alias === a ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, alias: x.alias === a ? '' : a }))}>{a}</button>)}</div>
         </div>}
         {table && <Field label="Personas" htmlFor="og" hint={`La mesa es para ${table.seats}`}><input id="og" type="number" min="1" value={f.guests} onChange={set('guests')} /></Field>}
-        <Field label={table ? 'Nombre del cliente (opcional)' : 'Nombre del cliente'} htmlFor="on"><input id="on" value={f.customerName} onChange={set('customerName')} autoFocus={!table && !withCustomers} /></Field>
+        <Field label={table || type === 'llevar' ? 'Nombre del cliente (opcional)' : 'Nombre del cliente'} htmlFor="on"><input id="on" value={f.customerName} onChange={set('customerName')} autoFocus={!table && !withCustomers} /></Field>
         {type !== 'mesa' && <Field label="Celular" htmlFor="op"><input id="op" inputMode="tel" value={f.customerPhone} onChange={set('customerPhone')} /></Field>}
         {type === 'domicilio' && <div className="span-2"><Field label="Dirección" htmlFor="oa" required><input id="oa" value={f.customerAddress} onChange={set('customerAddress')} /></Field></div>}
         {type === 'domicilio' && <div className="span-2">

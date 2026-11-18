@@ -78,7 +78,7 @@ const CustomerDetail = ({ id, onClose, onEdit, onOrder }) => {
     <Modal title={d?.name || 'Cliente'} onClose={onClose} size="lg"
       footer={d && <>
         {sells && <button type="button" className="btn" onClick={() => onEdit(d)}><MdEdit /> Editar</button>}
-        {sells && <button type="button" className="btn" onClick={() => onOrder(d, 'llevar')}><MdShoppingBag /> {distributor ? 'Venta para recoger' : 'Para llevar'}</button>}
+        {sells && <button type="button" className="btn" onClick={() => onOrder(d, 'llevar')}><MdShoppingBag /> {distributor ? 'Venta en mostrador' : 'Para llevar'}</button>}
         {sells && has('domicilios') && <button type="button" className="btn btn-primary" onClick={() => onOrder(d, 'domicilio')}><MdDeliveryDining /> Nuevo domicilio</button>}
       </>}>
       {error ? <div className="alert bad">{error}</div> : !d ? <div className="splash" style={{ minHeight: 160 }}><Spinner /></div> : (
@@ -109,7 +109,7 @@ const CustomerDetail = ({ id, onClose, onEdit, onOrder }) => {
                 <thead><tr><th>Pedido</th><th className="hide-sm">Fecha</th><th className="hide-sm">Vendedor</th><th className="num">Total</th><th>Estado</th></tr></thead>
                 <tbody>{d.orders.map((o) => (
                   <tr key={o.id} onClick={() => navigate(`/pedidos/${o.id}`)} style={{ cursor: 'pointer' }}>
-                    <td><strong>{o.number}</strong><small className="block muted">{o.type === 'domicilio' ? `Domicilio${o.deliveryStatus ? ` · ${DELIVERY_LABEL[o.deliveryStatus]}` : ''}` : o.type === 'llevar' ? 'Para recoger' : o.type}</small></td>
+                    <td><strong>{o.number}</strong><small className="block muted">{o.type === 'domicilio' ? `Domicilio${o.deliveryStatus ? ` · ${DELIVERY_LABEL[o.deliveryStatus]}` : ''}` : o.type === 'llevar' ? 'Mostrador' : o.type}</small></td>
                     <td className="hide-sm"><small>{formatDateTime(o.openedAt)}</small></td>
                     <td className="hide-sm">{o.seller || '—'}</td>
                     <td className="num money">{formatMoney(o.total)}</td>

@@ -283,6 +283,7 @@ const Dashboard = () => {
         <div className="row wrap" style={{ gap: 10 }}>
           {sells && !distributor && <Link to="/mesas" className="btn btn-primary"><MdTableRestaurant /> Ir a las mesas</Link>}
           {sells && distributor && <Link to="/domicilios" className="btn btn-primary"><MdDeliveryDining /> Ir a los domicilios</Link>}
+          {sells && distributor && <Link to="/pedidos?nuevo=llevar" className="btn"><MdShoppingCart /> Venta en mostrador</Link>}
           {sells && distributor && has('clientes') && <Link to="/clientes" className="btn"><MdStorefront /> Clientes</Link>}
           {kitchen && <Link to="/comandas" className="btn btn-primary"><MdSoupKitchen /> Ver comandas</Link>}
           {cashier && <Link to="/caja" className="btn"><MdPointOfSale /> {data.session ? `Caja abierta: ${data.session.register} (${data.session.number})` : 'Abrir caja'}</Link>}

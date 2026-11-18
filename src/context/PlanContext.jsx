@@ -5,7 +5,7 @@ import { setMoneyFormat } from '../utils/format'
 
 // Plan del establecimiento : qué módulos tiene y en qué país/moneda opera.
 // features = null significa sin restricciones (establecimiento sin plan asignado).
-// distributor: plan sin mesas (distribuidora): vende a domicilio y para recoger, sin salón.
+// distributor: plan sin mesas (distribuidora): vende a domicilio y en mostrador (el cliente compra en el local), sin salón.
 const PlanContext = createContext({ features: null, has: () => true, distributor: false, plan: null, country: null, refresh: () => {} })
 
 export const PlanProvider = ({ children }) => {
