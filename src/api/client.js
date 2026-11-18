@@ -33,7 +33,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (error) => {
-    if (error.response?.status === 401 && !error.config?.url?.includes('/login')) {
+    if (error.response?.status === 401 && !error.config?.url?.includes('/login') && !error.config?.url?.startsWith('/carta')) {
       window.dispatchEvent(new CustomEvent('td:unauthorized'))
     }
     return Promise.reject(error)

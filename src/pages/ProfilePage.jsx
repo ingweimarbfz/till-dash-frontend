@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import React, { useEffect, useState } from 'react'
 import { MdPhotoCamera, MdPhotoLibrary, MdLock, MdDraw } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
@@ -63,11 +64,12 @@ const ProfilePage = () => {
               <div className="span-2 right"><button type="submit" className="btn btn-primary" disabled={busy === 'contact'}>{busy === 'contact' && <Spinner />} Guardar</button></div>
             </form>
           </Card>
-          <Card title="Firma digital" icon={<MdDraw />} subtitle="Se usa en cierres de caja, actas de inventario y aceptación de términos.">
+          <Card title="Firma digital" icon={<MdDraw />} subtitle="Se usa en cierres de caja, actas de inventario y en la firma del contrato de servicio.">
             {signature === undefined ? <Spinner /> : (
               <>
                 <SignaturePad value={signature} onChange={setSignature} />
                 <div className="right" style={{ marginTop: 10 }}><button type="button" className="btn btn-primary" disabled={busy === 'sign'} onClick={() => save({ signatureUrl: signature }, 'sign', signature ? 'Firma guardada' : 'Firma eliminada')}>{busy === 'sign' && <Spinner />} Guardar firma</button></div>
+                <small className="hint" style={{ display: 'block', marginTop: 8 }}>Consulta los <Link to="/legal/terminos">términos y condiciones de uso</Link>.</small>
               </>
             )}
           </Card>

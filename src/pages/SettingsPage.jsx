@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react'
-import { MdStorefront, MdPercent, MdPalette, MdChevronRight } from 'react-icons/md'
+import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2, MdPointOfSale } from 'react-icons/md'
+import { MoneyInput } from '../components/forms'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -59,6 +60,17 @@ const SettingsPage = () => {
             <div className="form-grid">
               <Field label="Porcentaje" htmlFor="tp"><div className="input-prefix"><span>%</span><input id="tp" inputMode="decimal" value={form.tipPercent} onChange={set('tipPercent')} /></div></Field>
               <label className="check span-2"><input type="checkbox" checked={form.tipSuggested} onChange={set('tipSuggested')} /> Sugerir la propina en todas las cuentas</label>
+            </div>
+          </Card>
+          <Card title="Gastos de caja" icon={<MdPointOfSale />} subtitle="Gastos menores del turno (hielo, limones, domicilios) que salen del efectivo de la caja.">
+            <Field label="Tope por gasto" htmlFor="cel" hint="Si un gasto lo supera, el cajero debe pedir los recursos al administrador. 0: sin tope.">
+              <MoneyInput id="cel" value={form.cashExpenseLimit} onChange={(v) => setForm((f) => ({ ...f, cashExpenseLimit: v === '' ? 0 : v }))} />
+            </Field>
+          </Card>
+          <Card title="Carta y QR" icon={<MdQrCode2 />} subtitle="Las cartas por horario y lo que puede hacer el cliente al escanear el QR (varias opciones a la vez).">
+            <div className="stack" style={{ gap: 8 }}>
+              <Link to="/carta?tab=qr" className="btn btn-block">Opciones del QR <MdChevronRight /></Link>
+              <Link to="/carta?tab=cartas" className="btn btn-block">Armar cartas <MdChevronRight /></Link>
             </div>
           </Card>
           {user.role === 'superadmin' && (

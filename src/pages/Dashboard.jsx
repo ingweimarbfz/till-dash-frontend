@@ -1,14 +1,29 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2 } from 'react-icons/md'
+import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart, MdStar, MdEmojiEvents } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
 import { Badge, Card, Empty, Kpi, PageHead, Spinner } from '../components/ui'
-import { formatDateTime } from '../utils/format'
+import { formatDateTime, formatMoney, formatShort, minutesLabel } from '../utils/format'
+import { since } from './operacion/common'
 import { POSITION_LABELS } from '../utils/nav'
 
-const UPCOMING_ICON = { 'Pedidos por atender': MdReceiptLong, 'Mesas abiertas': MdTableRestaurant, 'Caja del turno': MdPointOfSale, 'Ventas del día': MdAttachMoney, 'Stock bajo': MdInventory, 'Llamados de mesa': MdNotificationsActive }
+// Ventas por hora del día (barras simples).
+const HourBars = ({ data }) => {
+  const max = Math.max(1, ...data.map((d) => d.total))
+  const hours = data.filter((d, i) => d.total > 0 || (d.hour >= 10 && d.hour <= 23) || i === 0)
+  return (
+    <div className="hour-bars" role="img" aria-label="Ventas por hora">
+      {hours.map((d) => (
+        <div key={d.hour} className="hour-bar" title={`${d.hour}:00 · ${formatMoney(d.total)}`}>
+          <span style={{ height: `${Math.max(2, (d.total / max) * 100)}%` }} className={d.total ? '' : 'zero'} />
+          <small>{d.hour}</small>
+        </div>
+      ))}
+    </div>
+  )
+}
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches' }
 
 // Dashboard por rol. Cada etapa le suma indicadores (pedidos, mesas, caja, ventas, stock, llamados).
@@ -28,12 +43,87 @@ const Dashboard = () => {
       <div className="stack">
         <PageHead title={`${greeting()}, ${user.name}`} subtitle={`Operación de hoy en ${settings.businessName}.`} />
         <div className="kpis">
-          <Kpi label="Usuarios activos" value={k.users} icon={MdPeople} tone="brand" />
-          <Kpi label="Empleados" value={k.employees} icon={MdBadge} />
-          <Kpi label="Sucursales" value={k.sites} icon={MdPlace} />
-          <Kpi label="Bodegas" value={k.warehouses} icon={MdWarehouse} />
-          <Kpi label="Movimientos hoy" value={k.activityToday} icon={MdTimeline} tone="dark" />
+          <Kpi label="Ventas de hoy" value={formatMoney(k.salesToday)} note={`${k.ordersToday} pedidos · ticket ${formatMoney(k.avgTicket)}`} icon={MdAttachMoney} tone="brand" />
+          <Kpi label="Propinas de hoy" value={formatMoney(k.tipsToday)} icon={MdLocalAtm} />
+          <Kpi label="Pedidos abiertos" value={k.openOrders} icon={MdReceiptLong} tone="dark" />
+          <Kpi label="Mesas ocupadas" value={`${k.occupiedTables}/${k.tables}`} icon={MdTableRestaurant} />
+          <Kpi label="Llamados de mesa" value={k.pendingCalls} icon={MdNotificationsActive} tone={k.pendingCalls ? 'warn' : ''} />
+          <Kpi label="Cajas abiertas" value={k.openSessions} icon={MdPointOfSale} />
+          <Kpi label="Por cobrar" value={formatMoney(k.receivables)} icon={MdRequestQuote} />
+          <Kpi label="Stock bajo / agotados" value={`${k.lowStock} / ${k.outOfStock}`} icon={MdWarningAmber} tone={k.outOfStock ? 'bad' : k.lowStock ? 'warn' : ''} />
         </div>
+        {data.money && (
+          <div className="kpis">
+            <Link to="/finanzas?tab=fondos" className="kpi-link"><Kpi label="Dinero en fondos" value={formatMoney(data.money.funds)} icon={MdAccountBalance} note="General y sucursales" /></Link>
+            <Link to="/finanzas?tab=gastos" className="kpi-link"><Kpi label="Gastos del mes" value={formatMoney(data.money.expensesMonth)} icon={MdTrendingDown} /></Link>
+            <Link to="/caja?tab=solicitudes" className="kpi-link"><Kpi label="Solicitudes de caja" value={data.money.requests.length} icon={MdPanTool} tone={data.money.requests.length ? 'warn' : ''} note={data.money.requests.length ? 'Esperan tu aprobación' : 'Sin pendientes'} /></Link>
+            <Link to="/incidentes" className="kpi-link"><Kpi label="Incidentes abiertos" value={data.money.openIncidents} icon={MdReportProblem} tone={data.money.openIncidents ? 'bad' : ''} /></Link>
+          </div>
+        )}
+        {data.money?.requests.length > 0 && (
+          <div className="alert warn row-between">
+            <span><MdPanTool style={{ verticalAlign: -3 }} /> {data.money.requests.map((r) => `${r.register} pide ${formatMoney(r.amount)} (${r.reason})`).join(' · ')}</span>
+            <Link to="/caja?tab=solicitudes" className="btn btn-sm">Revisar</Link>
+          </div>
+        )}
+        <div className="grid grid-2-1">
+          <Card title="Ventas por hora" subtitle={`Hoy · descuentos ${formatMoney(k.discountsToday)} · cortesías ${formatMoney(k.courtesiesToday)}`} icon={<MdAttachMoney />}>
+            {k.ordersToday ? <HourBars data={data.salesByHour} /> : <Empty icon={<MdAttachMoney />}>Aún no hay ventas hoy.</Empty>}
+          </Card>
+          <Card title="En este momento" flush>
+            <ul className="list padded">
+              {data.calls.map((c) => <li key={`c${c.id}`}><span>{c.kind === 'cuenta' ? <MdReceipt /> : <MdRoomService />} <strong>{c.table}</strong> <small>{c.kind === 'cuenta' ? 'pide la cuenta' : 'llama al mesero'}</small></span><small>{since(c.createdAt)}</small></li>)}
+              {data.sessions.map((x) => <li key={`s${x.id}`}><span><MdLockOpen /> <strong>{x.register}</strong> <small>{x.number}{x.site ? ` · ${x.site}` : ''}</small></span><small>{since(x.openedAt)}</small></li>)}
+              {!data.calls.length && !data.sessions.length && <li><small className="muted">Sin llamados ni cajas abiertas.</small></li>}
+            </ul>
+            <div className="row-end" style={{ padding: '0 16px 14px' }}><Link to="/mesas" className="btn btn-sm">Mesas</Link><Link to="/caja" className="btn btn-sm">Caja</Link></div>
+          </Card>
+        </div>
+        {data.tableUsage && (
+          <Card title="Uso de las mesas" subtitle="Últimos 30 días · cuánto dura una mesa ocupada y cuánto vende por hora" icon={<MdTimer />}
+            actions={<Link to="/reportes?tab=mesas" className="btn btn-sm">Ver reporte</Link>}>
+            {!data.tableUsage.turns ? <Empty icon={<MdTimer />}>Cuando se cobren pedidos en mesa verás aquí el tiempo promedio de cada una.</Empty> : (
+              <div className="usage">
+                <div className="usage-kpis">
+                  <div><span>Tiempo promedio</span><strong>{minutesLabel(data.tableUsage.avgMinutes)}</strong><small>{data.tableUsage.turns} ocupaciones</small></div>
+                  <div><span>Venta por hora de mesa</span><strong>{formatMoney(data.tableUsage.perHour)}</strong><small>Mitad de las mesas: menos de {minutesLabel(data.tableUsage.medianMinutes)}</small></div>
+                </div>
+                <div className="usage-best">
+                  <span className="label-sm">Mejores puestos para reservar</span>
+                  <ol>{data.tableUsage.best.map((t) => (
+                    <li key={t.tableId}><strong>{t.name}</strong> <small className="muted">{t.area}</small><span className="grow" /><small>{minutesLabel(t.avgMinutes)}</small><b className="money">{formatMoney(t.perHour)}/h</b></li>
+                  ))}</ol>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+        {data.staffRanking && (
+          <Card title="Mejor servicio" subtitle={data.staffRanking.count ? `Calificaciones de los clientes por QR · últimos 30 días · promedio ${data.staffRanking.avg} ★ (${data.staffRanking.count})` : 'Calificaciones de los clientes por QR · últimos 30 días'} icon={<MdStar />}>
+            {!data.staffRanking.rows.length ? <Empty icon={<MdStar />}>Cuando los clientes califiquen el servicio desde el QR de su mesa, verás aquí al mejor empleado.</Empty> : (
+              <ol className="staff-rank">{data.staffRanking.rows.map((x, i) => (
+                <li key={x.id} className={i === 0 ? 'top' : ''}>
+                  <span className="pos">{i === 0 ? <MdEmojiEvents /> : i + 1}</span>
+                  <span className="who"><strong>{x.name}</strong><small>{x.count} calificaciones · {x.five} de 5 ★</small></span>
+                  <span className="stars" aria-label={`${x.avg} de 5 estrellas`}>{'★'.repeat(Math.round(x.avg))}<em>{'★'.repeat(5 - Math.round(x.avg))}</em></span>
+                  <b>{String(x.avg).replace('.', ',')}</b>
+                </li>
+              ))}</ol>
+            )}
+          </Card>
+        )}
+        {data.alerts?.length > 0 && (
+          <Card title="Stock bajo y agotados" icon={<MdWarningAmber />} actions={<Link to="/inventario?tab=resumen" className="btn btn-sm">Ver inventario</Link>} flush>
+            <ul className="list padded">
+              {data.alerts.map((a) => (
+                <li key={`${a.warehouseId}-${a.productId}`}>
+                  <span><Link to={`/productos/${a.productId}`}><strong>{a.name}</strong></Link> <small>{a.warehouse.name}{a.warehouse.site ? ` · ${a.warehouse.site}` : ''}</small></span>
+                  <Badge tone={a.out ? 'bad' : 'warn'}>{a.out ? 'Agotado' : `Quedan ${Number(a.stock).toLocaleString('es-CO')} ${a.unit}`}</Badge>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
         <div className="grid grid-2-1">
           <Card title="Actividad reciente" icon={<MdMenuBook />} actions={<Link to="/bitacora" className="btn btn-sm">Ver bitácora</Link>} flush>
             {!data.recent.length ? <Empty icon={<MdTimeline />}>Aún no hay actividad.</Empty> : (
@@ -42,10 +132,15 @@ const Dashboard = () => {
               </ul>
             )}
           </Card>
-          <Card title="Muy pronto en tu dashboard" subtitle="Llegan con las próximas etapas.">
-            <ul className="list">
-              {data.upcoming.map((u) => { const Icon = UPCOMING_ICON[u] || MdTimeline; return <li key={u}><span><Icon /> {u}</span><Badge tone="muted">Pronto</Badge></li> })}
-            </ul>
+          <Card title="Tu establecimiento">
+            <dl className="order-totals" style={{ margin: 0 }}>
+              <div><dt><MdPeople /> Usuarios activos</dt><dd>{k.users}</dd></div>
+              <div><dt><MdBadge /> Empleados</dt><dd>{k.employees}</dd></div>
+              <div><dt><MdPlace /> Sucursales</dt><dd>{k.sites}</dd></div>
+              <div><dt><MdWarehouse /> Bodegas</dt><dd>{k.warehouses}</dd></div>
+              <div><dt><MdRestaurantMenu /> Productos activos</dt><dd>{k.products}</dd></div>
+              <div><dt><MdTimeline /> Movimientos hoy</dt><dd>{k.activityToday}</dd></div>
+            </dl>
           </Card>
         </div>
       </div>
@@ -53,15 +148,69 @@ const Dashboard = () => {
   }
 
   if (data.role === 'empleado') {
+    const ek = data.kpis
+    const pos = data.positions
+    const sells = pos.some((p) => ['mesero', 'cajero', 'host', 'bartender', 'barista'].includes(p))
+    const kitchen = pos.some((p) => ['cocina', 'bartender', 'barista'].includes(p))
+    const cashier = pos.includes('cajero')
     return (
       <div className="stack">
         <PageHead title={`${greeting()}, ${user.name}`} subtitle={[data.site, data.positions.map((p) => POSITION_LABELS[p]).join(' · ')].filter(Boolean).join(' · ')} />
         <div className="kpis">
-          <Kpi label="Mis movimientos hoy" value={data.kpis.myActivityToday} icon={MdTimeline} tone="brand" />
+          {sells && <Kpi label="Mis ventas de hoy" value={formatMoney(ek.mySalesToday)} note={`${ek.myOrdersToday} pedidos cobrados`} icon={MdAttachMoney} tone="brand" />}
+          {sells && <Kpi label="Mis propinas de hoy" value={formatMoney(ek.myTipsToday)} icon={MdLocalAtm} />}
+          {sells && <Kpi label="Mis pedidos abiertos" value={ek.myOpenOrders} icon={MdReceiptLong} tone="dark" />}
+          {sells && <Kpi label="Llamados de mesa" value={ek.pendingCalls} icon={MdNotificationsActive} tone={ek.pendingCalls ? 'warn' : ''} />}
+          {kitchen && <Kpi label="Comandas por empezar" value={ek.kitchenPending} icon={MdSoupKitchen} tone={ek.kitchenPending ? 'warn' : 'brand'} />}
+          {kitchen && <Kpi label="En preparación" value={ek.kitchenPreparing} icon={MdSoupKitchen} />}
+          <Kpi label="Mis movimientos hoy" value={ek.myActivityToday} icon={MdTimeline} />
         </div>
-        <Card title="Tu turno" subtitle="Aquí verás tus mesas, los pedidos por atender y los llamados de los clientes cuando se habilite la operación (etapa 3).">
-          <Empty icon={<MdTableRestaurant />}>Todavía no hay mesas configuradas.</Empty>
-        </Card>
+        <div className="row wrap" style={{ gap: 10 }}>
+          {sells && <Link to="/mesas" className="btn btn-primary"><MdTableRestaurant /> Ir a las mesas</Link>}
+          {kitchen && <Link to="/comandas" className="btn btn-primary"><MdSoupKitchen /> Ver comandas</Link>}
+          {cashier && <Link to="/caja" className="btn"><MdPointOfSale /> {data.session ? `Caja abierta: ${data.session.register} (${data.session.number})` : 'Abrir caja'}</Link>}
+        </div>
+        <div className="grid grid-2">
+          {sells && (
+            <Card title="Mis mesas y pedidos" icon={<MdTableRestaurant />} subtitle={data.myTables?.length ? `${data.myTables.length} abiertos` : null} flush>
+              {!data.myTables?.length ? <Empty icon={<MdTableRestaurant />}>No tienes pedidos abiertos.</Empty> : (
+                <ul className="list padded">{data.myTables.map((t) => (
+                  <li key={t.id}>
+                    <span><Link to={`/pedidos/${t.id}`}><strong>{t.name}</strong></Link>{t.alias && <small> · {t.alias}</small>} <small>{t.number} · hace {minutesLabel(t.minutes)}{t.guests ? ` · ${t.guests} pers.` : ''}</small></span>
+                    <span className="row" style={{ gap: 6 }}>
+                      {t.ready > 0 && <Badge tone="ok"><MdCheckCircle /> {t.ready} listo{t.ready === 1 ? '' : 's'}</Badge>}
+                      {t.cooking > 0 && <Badge><MdHourglassTop /> {t.cooking}</Badge>}
+                      {t.billRequested && <Badge tone="warn">Pide cuenta</Badge>}
+                      <b className="money">{formatMoney(t.total)}</b>
+                    </span>
+                  </li>
+                ))}</ul>
+              )}
+            </Card>
+          )}
+          {cashier && data.shift && (
+            <Card title="Mi turno de caja" icon={<MdPointOfSale />} subtitle={`${data.session.register} · ${data.session.number}`} actions={<Link to="/caja" className="btn btn-sm">Ir a caja</Link>}>
+              <dl className="order-totals" style={{ margin: 0 }}>
+                <div><dt>Ventas del turno</dt><dd>{formatMoney(data.shift.sales)} <small className="muted">({data.shift.orders})</small></dd></div>
+                <div><dt>Propinas</dt><dd>{formatMoney(data.shift.tips)}</dd></div>
+                <div><dt><MdShoppingCart /> Gastos del turno</dt><dd>−{formatMoney(data.shift.expenses)}</dd></div>
+                <div className="total"><dt>Efectivo esperado</dt><dd>{formatMoney(data.shift.expectedCash)}</dd></div>
+              </dl>
+              {data.shift.requests.length > 0 && <ul className="list" style={{ marginTop: 10 }}>{data.shift.requests.map((r) => <li key={r.number}><span><MdPanTool /> {r.number}</span><span className="row" style={{ gap: 6 }}><Badge tone={r.status === 'aprobada' ? 'ok' : r.status === 'rechazada' ? 'bad' : 'warn'}>{r.status}</Badge><b className="money">{formatMoney(r.amount)}</b></span></li>)}</ul>}
+            </Card>
+          )}
+          {kitchen && (
+            <Card title="Comandas" icon={<MdSoupKitchen />}>
+              {!ek.kitchenPending && !ek.kitchenPreparing ? <Empty icon={<MdSoupKitchen />}>Todo al día.</Empty> : (
+                <dl className="order-totals" style={{ margin: 0 }}>
+                  <div><dt>Por empezar</dt><dd>{ek.kitchenPending}</dd></div>
+                  <div><dt>En preparación</dt><dd>{ek.kitchenPreparing}</dd></div>
+                  {data.kitchenOldest !== null && data.kitchenOldest !== undefined && <div className="total"><dt>La más antigua espera</dt><dd className={data.kitchenOldest >= 20 ? 'text-bad' : ''}>{minutesLabel(data.kitchenOldest)}</dd></div>}
+                </dl>
+              )}
+            </Card>
+          )}
+        </div>
       </div>
     )
   }
@@ -69,7 +218,7 @@ const Dashboard = () => {
   return (
     <div className="stack">
       <PageHead title={`Bienvenido a ${settings.businessName}`} subtitle="Escanea el código QR de tu mesa para ver la carta y hacer tu pedido." />
-      <Card><Empty icon={<MdQrCode2 />}>La carta por QR llega en la etapa 3.</Empty></Card>
+      <Card><Empty icon={<MdQrCode2 />}>Escanea el QR de tu mesa con la cámara del celular.</Empty></Card>
     </div>
   )
 }

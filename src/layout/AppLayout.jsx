@@ -1,13 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { MdMenu, MdChevronRight, MdLogout, MdPerson, MdKeyboardArrowDown, MdSearch, MdPlace, MdSwapHoriz } from 'react-icons/md'
+import { MdMenu, MdChevronRight, MdLogout, MdPerson, MdKeyboardArrowDown, MdSearch, MdPlace, MdSwapHoriz, MdWorkspacePremium } from 'react-icons/md'
 import api, { getSiteFilter, setSiteFilter } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
+import { usePlan } from '../context/PlanContext'
+import { formatDate } from '../utils/format'
 import { navFor, titleFor, ACCOUNT_NAV, ROLE_LABELS } from '../utils/nav'
 import { Avatar } from '../components/ui'
 import { BrandLogo } from '../components/Logo'
 import SearchPalette, { useSearchShortcut } from '../components/SearchPalette'
+import StockAlerts from '../components/StockAlerts'
+import TableCalls from '../components/TableCalls'
 
 // Fecha corta: "Lun, 16 Nov 2026".
 const todayLabel = (() => {
@@ -95,8 +99,9 @@ const AppLayout = () => {
     ? <SiteSelector value={site} onChange={changeSite} />
     : user.site && user.role === 'empleado' && <span className="site-chip" title="Tu sucursal"><MdPlace /> {user.site.name}</span>
 
-  const sections = navFor(user.role)
-  const { section, title } = titleFor(user.role, pathname)
+  const plan = usePlan()
+  const sections = navFor(user.role, user.positions, plan.has)
+  const { section, title } = titleFor(user.role, pathname, user.positions)
 
   return (
     <div className={`app${collapsed ? ' sidebar-off' : ''}`}>
@@ -108,6 +113,18 @@ const AppLayout = () => {
           <small>Establecimiento</small>
           <strong>{settings.businessName}</strong>
         </div>
+        {/* Mi plan a la vista, debajo del establecimiento (solo el super administrador). */}
+        {user.role === 'superadmin' && (
+          <NavLink to="/mi-plan" className={({ isActive }) => `sidebar-plan${isActive ? ' active' : ''}`}>
+            <MdWorkspacePremium />
+            <span className="nav-label">
+              <small>Mi plan</small>
+              <strong>{plan.plan?.name || 'Sin plan'}</strong>
+              {plan.status === 'prueba' && <em>Prueba hasta {formatDate(plan.renewalDate)}</em>}
+            </span>
+            <MdChevronRight className="go" />
+          </NavLink>
+        )}
         {siteControl && <div className="sidebar-site show-md">{siteControl}</div>}
         <nav className="sidebar-nav" aria-label="Menú principal">
           {sections.map((s) => (
@@ -176,6 +193,8 @@ const AppLayout = () => {
           <Outlet key={site || 'all'} />
         </main>
         {searching && <SearchPalette onClose={() => setSearching(false)} />}
+        {user.role !== 'cliente' && <StockAlerts key={site || 'all'} />}
+        {plan.has('carta_qr') && (admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host'].includes(p)))) && <TableCalls key={`calls-${site || 'all'}`} />}
       </div>
     </div>
   )
