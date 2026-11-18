@@ -10,6 +10,7 @@ import { Bars, Ranking, Share } from '../../components/charts'
 import { formatDate, formatDateTime, formatMoney, minutesLabel } from '../../utils/format'
 
 import { bogota, PRESETS, dayLabel, download } from '../../utils/range'
+import CuadreTab from './CuadreTab'
 
 const ExportBtn = ({ onClick }) => <button type="button" className="btn btn-sm" onClick={onClick}><MdDownload /> Excel</button>
 const pct = (v) => (v === null || v === undefined ? '—' : `${String(v).replace('.', ',')} %`)
@@ -177,25 +178,25 @@ const ReportsPage = () => {
     setLoading(true); setError('')
     api.get('/reportes', { params: { desde: range.from, hasta: range.to } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))).finally(() => setLoading(false))
   }, [range])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { if (tab !== 'cuadre') load() }, [load, tab === 'cuadre']) // eslint-disable-line react-hooks/exhaustive-deps
   const pick = (k) => { setPreset(k); setRange({ from: presets[k][1], to: presets[k][2] }) }
   const file = `${range.from}_a_${range.to}`
   return (
     <div className="stack">
       <PageHead title="Reportes" subtitle={r ? `${r.site || 'Todas las sucursales'} · ${formatDate(r.range.from)} a ${formatDate(r.range.to)}` : 'Ventas, productos, meseros y propinas'}>
-        <button type="button" className="btn btn-icon" onClick={load} aria-label="Actualizar" title="Actualizar" disabled={loading}>{loading ? <Spinner /> : <MdRefresh />}</button>
-        {r && <button type="button" className="btn" onClick={() => download(`ventas-por-dia-${file}`, [['Fecha', 'date'], ['Pedidos', 'orders'], ['Personas', 'guests'], ['Ventas', 'sales'], ['Propinas', 'tips']], r.byDay)}><MdDownload /> Ventas por día</button>}
+        {tab !== 'cuadre' && <button type="button" className="btn btn-icon" onClick={load} aria-label="Actualizar" title="Actualizar" disabled={loading}>{loading ? <Spinner /> : <MdRefresh />}</button>}
+        {r && tab !== 'cuadre' && <button type="button" className="btn" onClick={() => download(`ventas-por-dia-${file}`, [['Fecha', 'date'], ['Pedidos', 'orders'], ['Personas', 'guests'], ['Ventas', 'sales'], ['Propinas', 'tips']], r.byDay)}><MdDownload /> Ventas por día</button>}
       </PageHead>
-      <div className="report-filters">
+      {tab !== 'cuadre' && <div className="report-filters">
         <div className="chip-list">{Object.entries(presets).map(([k, p]) => <button key={k} type="button" className={`pchip${preset === k ? ' on' : ''}`} onClick={() => pick(k)}>{p[0]}</button>)}</div>
         <div className="row" style={{ gap: 6, alignItems: 'center' }}>
           <input type="date" value={range.from} max={range.to} onChange={(e) => { setPreset(''); setRange((x) => ({ ...x, from: e.target.value })) }} aria-label="Desde" />
           <span className="muted">a</span>
           <input type="date" value={range.to} min={range.from} max={bogota()} onChange={(e) => { setPreset(''); setRange((x) => ({ ...x, to: e.target.value })) }} aria-label="Hasta" />
         </div>
-      </div>
-      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['productos', 'Productos'], ['meseros', 'Meseros'], ['mesas', 'Mesas'], ['propinas', 'Propinas'], ['perdidas', 'Cortesías y anulaciones']]} />
-      {error ? <div className="alert bad">{error}</div> : !r ? <div className="splash" style={{ minHeight: 240 }}><Spinner /></div> : (
+      </div>}
+      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuadre', 'Cuadre del día'], ['productos', 'Productos'], ['meseros', 'Meseros'], ['mesas', 'Mesas'], ['propinas', 'Propinas'], ['perdidas', 'Cortesías y anulaciones']]} />
+      {tab === 'cuadre' ? <CuadreTab /> : error ? <div className="alert bad">{error}</div> : !r ? <div className="splash" style={{ minHeight: 240 }}><Spinner /></div> : (
         <div className={loading ? 'is-loading' : ''}>
           {tab === 'resumen' && <Summary r={r} />}
           {tab === 'productos' && <Products r={r} file={file} />}

@@ -66,6 +66,9 @@ const SettingsPage = () => {
             <Field label="Tope por gasto" htmlFor="cel" hint="Si un gasto lo supera, el cajero debe pedir los recursos al administrador. 0: sin tope.">
               <MoneyInput id="cel" value={form.cashExpenseLimit} onChange={(v) => setForm((f) => ({ ...f, cashExpenseLimit: v === '' ? 0 : v }))} />
             </Field>
+            <Field label="Horas para reabrir un turno cerrado" htmlFor="crh" hint="Si hubo un error en el cierre, el administrador puede reabrir el turno durante estas horas y antes de abrir un turno nuevo en esa caja. 0: no se reabre.">
+              <div className="input-prefix" style={{ maxWidth: 160 }}><span>h</span><input id="crh" type="number" min="0" max="72" step="1" inputMode="numeric" value={form.cashReopenHours ?? 12} onChange={set('cashReopenHours')} /></div>
+            </Field>
           </Card>
           <Card title="Carta y QR" icon={<MdQrCode2 />} subtitle="Las cartas por horario y lo que puede hacer el cliente al escanear el QR (varias opciones a la vez).">
             <div className="stack" style={{ gap: 8 }}>

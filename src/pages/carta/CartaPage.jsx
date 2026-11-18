@@ -216,6 +216,16 @@ const QrOptions = ({ catalog, toast }) => {
               })}</div>
             </div>
           )}
+          <div className="qr-direct">
+            <b><MdReceipt /> ¿Qué ve el cliente de su cuenta?</b>
+            <small className="muted">Si prefieres que el cliente disfrute sin estar pendiente del valor, muestra solo lo que pidió o nada.</small>
+            <div className="seg seg-wrap">
+              {[['completa', 'Cuenta completa', 'Productos, valores y total'], ['sin_valores', 'Solo lo pedido', 'Productos y su estado, sin valores'], ['oculta', 'Nada', 'No se muestra la cuenta']].map(([k, l, d]) => (
+                <button key={k} type="button" className={`btn btn-sm${(o.billView || 'completa') === k ? ' on' : ''}`} onClick={() => setO((x) => ({ ...x, billView: k }))} title={d}>{l}</button>
+              ))}
+            </div>
+            <small className="muted">{{ completa: 'El cliente ve cada producto con su valor y el total de la cuenta.', sin_valores: 'El cliente ve lo que pidió y si está en preparación, pero no los valores ni el total.', oculta: 'El cliente no ve su cuenta en la carta; el mesero se la presenta al cobrar.' }[o.billView || 'completa']}</small>
+          </div>
           <small className="muted">Sin un turno de caja abierto en la sucursal, el cliente no puede pedir; solo llamar al mesero o pedir la cuenta.</small>
         </div>
       </Card>

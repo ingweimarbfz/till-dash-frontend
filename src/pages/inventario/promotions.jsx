@@ -57,7 +57,7 @@ const EMPTY = { name: '', tag: '', emoji: '🍻', color: '#E4572E', description:
 
 const PromotionForm = ({ initial, categories, products, onClose, onSaved }) => {
   const editing = Boolean(initial?.id)
-  const [f, setF] = useState(() => (editing ? { ...EMPTY, ...initial, startsAt: toLocal(initial.startsAt), endsAt: toLocal(initial.endsAt), timeFrom: initial.timeFrom || '', timeTo: initial.timeTo || '', description: initial.description || '', tag: initial.tag || '', emoji: initial.emoji || '' } : EMPTY))
+  const [f, setF] = useState(() => (editing ? { ...EMPTY, ...initial, startsAt: toLocal(initial.startsAt), endsAt: toLocal(initial.endsAt), timeFrom: initial.timeFrom || '', timeTo: initial.timeTo || '', description: initial.description || '', tag: initial.tag || '', emoji: initial.emoji || '' } : { ...EMPTY, ...(initial || {}) }))
   const [byHours, setByHours] = useState(Boolean(initial?.timeFrom || initial?.weekdays?.length))
   const [q, setQ] = useState('')
   const [error, setError] = useState('')
@@ -140,6 +140,14 @@ export const PromotionsTab = ({ admin, categories, products, toast, onChanged })
   const [filter, setFilter] = useState('todas')
   const load = useCallback(() => { api.get('/promociones').then(({ data }) => setRows(data)).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
+  // Desde el dashboard ("Crear promoción" en un producto que se vende poco): abre la promoción con el producto elegido.
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const id = Number(q.get('producto'))
+    if (!admin || !id) return
+    const name = q.get('nombre') || ''
+    setModal({ preset: { scope: 'productos', productIds: [id], name: name ? `Promo ${name}`.slice(0, 60) : '', tag: 'Promo', type: 'porcentaje', value: '15', description: name ? `Precio especial en ${name}` : '' } })
+  }, [admin])
   const shown = useMemo(() => (rows || []).filter((p) => filter === 'todas' || (filter === 'vigentes' ? ['vigente', 'fuera_de_horario'].includes(p.status) : p.status === filter)), [rows, filter])
   const remove = async (p) => {
     if (!window.confirm(`¿Eliminar la promoción ${p.name}? Si solo quieres pausarla, edítala y desmárcala como activa.`)) return
@@ -173,7 +181,7 @@ export const PromotionsTab = ({ admin, categories, products, toast, onChanged })
           </div>
         ))}</div>
       )}
-      {modal && <PromotionForm initial={modal.id ? modal : null} categories={(categories || []).filter((c) => c.active)} products={(products || []).filter((p) => p.active)}
+      {modal && <PromotionForm initial={modal.id ? modal : modal.preset || null} categories={(categories || []).filter((c) => c.active)} products={(products || []).filter((p) => p.active)}
         onClose={() => setModal(null)} onSaved={(e) => { setModal(null); toast(e ? 'Promoción actualizada' : 'Promoción creada'); load(); onChanged() }} />}
     </div>
   )

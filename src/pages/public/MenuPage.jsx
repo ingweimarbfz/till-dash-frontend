@@ -93,12 +93,21 @@ const MenuPage = () => {
   useEffect(() => {
     if (expired) return undefined
     load()
-    const t = setInterval(() => {
+    // Se actualiza sola: cada 8 s con la carta a la vista y al volver a ella (por ejemplo, al desbloquear el celular),
+    // para que el cliente vea cuando el mesero confirma o entrega sin recargar.
+    const tick = () => {
       if (Date.now() - lastActive.current > IDLE_MS) { setExpired('La carta se cerró por inactividad. Escanea de nuevo el código QR de tu mesa para llamar al mesero o pedir.'); return }
       if (document.visibilityState === 'visible') load()
-    }, 20000)
-    return () => clearInterval(t)
+    }
+    const t = setInterval(tick, 8000)
+    const onShow = () => { if (document.visibilityState === 'visible') tick() }
+    document.addEventListener('visibilitychange', onShow)
+    window.addEventListener('focus', onShow)
+    window.addEventListener('online', onShow)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', onShow); window.removeEventListener('focus', onShow); window.removeEventListener('online', onShow) }
   }, [load, expired])
+  // El aviso de "listo" se va solo después de unos segundos.
+  useEffect(() => { if (!sent) return undefined; const t = setTimeout(() => setSent(''), 8000); return () => clearTimeout(t) }, [sent])
   useEffect(() => {
     const mark = () => { lastActive.current = Date.now() }
     ACTIVITY.forEach((ev) => window.addEventListener(ev, mark, { passive: true }))
@@ -166,19 +175,19 @@ const MenuPage = () => {
           {data.pendingOrder && (
             <div className="menu-pending" role="status">
               <MdHourglassTop />
-              <div><strong>Tu pedido está esperando al mesero</strong><small>{data.pendingOrder.items.map((i) => `${i.quantity} × ${i.name}`).join(', ')} · {formatMoney(data.pendingOrder.total)}</small></div>
+              <div><strong>Tu pedido está esperando al mesero</strong><small>{data.pendingOrder.items.map((i) => `${i.quantity} × ${i.name}`).join(', ')}{data.pendingOrder.total !== null && ` · ${formatMoney(data.pendingOrder.total)}`}</small></div>
             </div>
           )}
           {o && o.items.length > 0 && (
             <details className="menu-bill" open={o.items.some((i) => i.status === 'pendiente' || i.status === 'preparando')}>
-              <summary>Tu cuenta · {formatMoney(o.total)}</summary>
+              <summary>{o.total === null ? 'Tu pedido' : <>Tu cuenta · {formatMoney(o.total)}</>}</summary>
               <ul>{o.items.map((i, n) => (
                 <li key={n}>
                   <span>{i.quantity} × {i.name}{i.courtesy ? ' 🎁' : ''} {ITEM_STATUS[i.status] && i.status !== 'entregado' && <em className={`menu-st ${i.status}`}>{ITEM_STATUS[i.status]}</em>}</span>
-                  <span>{i.courtesy ? 'Cortesía' : formatMoney(i.quantity * i.price)}</span>
+                  {i.price !== null ? <span>{i.courtesy ? 'Cortesía' : formatMoney(i.quantity * i.price)}</span> : i.status === 'entregado' ? <span className="menu-st entregado">Entregado</span> : null}
                 </li>
               ))}</ul>
-              <small>Pedido {o.number}. La propina es voluntaria.</small>
+              <small>Pedido {o.number}.{o.total !== null && ' La propina es voluntaria.'}</small>
             </details>
           )}
           {data.rating?.canRate && <RateBox key={data.rating.stars || 0} rating={data.rating} onSend={rate} busy={busy === 'rate'} />}
