@@ -8,6 +8,8 @@ import { Field, Modal, Spinner } from '../../components/ui'
 import { MoneyInput } from '../../components/forms'
 import { formatMoney } from '../../utils/format'
 import SupplierField from '../../components/SupplierField'
+import QuickProductModal from '../../components/QuickProductModal'
+import { useAuth } from '../../context/AuthContext'
 
 // ---------- Unidades y cantidades ----------
 export const UNITS = { und: 'Unidad', porcion: 'Porción', botella: 'Botella', g: 'Gramos', kg: 'Kilos', ml: 'Mililitros', l: 'Litros' }
@@ -70,10 +72,18 @@ const stockIn = (p, warehouseId) => p.byWarehouse?.find((w) => w.warehouseId ===
 
 // ---------- Entrada, ajuste o baja de varios productos en una bodega ----------
 const MOVE_TITLES = { entrada: 'Entrada (compra)', ajuste: 'Ajuste (+ o −)', baja: 'Baja (daño, pérdida o vencimiento)' }
-export const MovementModal = ({ products, sites, warehouses, defaults = {}, onClose, onSaved }) => {
+export const MovementModal = ({ products: baseProducts, sites, warehouses, defaults = {}, onClose, onSaved }) => {
+  const { user } = useAuth()
+  // Productos creados aquí mismo (alta rápida) se suman a la lista sin recargar.
+  const [created, setCreated] = useState([])
+  const products = useMemo(() => [...baseProducts, ...created.filter((c) => !baseProducts.some((p) => p.id === c.id))], [baseProducts, created])
+  const [newProduct, setNewProduct] = useState(false)
+  // Turnos de caja abiertos, por si la compra se paga con el efectivo de la caja.
+  const [openSessions, setOpenSessions] = useState([])
+  useEffect(() => { api.get('/caja/turnos', { params: { estado: 'abierta', sede: undefined } }).then(({ data }) => setOpenSessions(data || [])).catch(() => setOpenSessions([])) }, [])
   const [f, setF] = useState(() => {
-    const p = defaults.productId ? products.find((x) => x.id === Number(defaults.productId)) : null
-    return { type: 'entrada', warehouseId: '', supplierId: p?.supplierId || null, supplier: p?.supplier || '', invoice: '', note: '', ...defaults }
+    const p = defaults.productId ? baseProducts.find((x) => x.id === Number(defaults.productId)) : null
+    return { type: 'entrada', warehouseId: '', supplierId: p?.supplierId || null, supplier: p?.supplier || '', invoice: '', note: '', paySessionId: '', ...defaults }
   })
   const [items, setItems] = useState([])
   const [pick, setPick] = useState(defaults.productId ? String(defaults.productId) : '')
@@ -82,6 +92,7 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
   // Desde el botón de un producto, la ventana trabaja solo con ese producto.
   const single = Boolean(defaults.productId)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? e.target.value : e }))
+  const canCreate = ['superadmin', 'admin'].includes(user?.role)
   const tracked = products.filter((p) => p.active && p.trackStock)
   const available = tracked.filter((p) => !items.some((i) => i.product.id === p.id))
   const add = (id = pick) => {
@@ -96,9 +107,11 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
   const real = (i) => (boxed && i.pack
     ? { quantity: Number(i.boxes) * Number(i.perBox), unitCost: Number(i.perBox) > 0 && i.boxCost !== '' ? Math.round((Number(i.boxCost) / Number(i.perBox)) * 100) / 100 : null }
     : { quantity: Number(i.quantity), unitCost: i.unitCost })
+  const purchaseTotal = Math.round(items.reduce((a, i) => { const r = real(i); return a + (Number(r.quantity) || 0) * (Number(r.unitCost) || 0) }, 0))
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (!f.warehouseId) return setError('Selecciona la bodega.')
+    if (f.type === 'entrada' && f.paySessionId && !(purchaseTotal > 0)) return setError('Escribe el costo de los productos para descontarlo de la caja.')
     if (!items.length) return setError('Agrega al menos un producto.')
     const badBox = items.find((i) => boxed && i.pack && !(Number(i.boxes) > 0 && Number(i.perBox) > 0 && Number.isInteger(Number(i.perBox))))
     if (badBox) return setError(`Escribe cuántas cajas y cuántas unidades trae cada caja de ${badBox.product.name}.`)
@@ -107,9 +120,10 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
     if (f.type !== 'entrada' && !f.note.trim()) return setError('Escribe el motivo.')
     setSaving(true)
     try {
-      const { data } = await api.post('/inventario/movimientos', { ...f, items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
+      const { data } = await api.post('/inventario/movimientos', { ...f, paySessionId: f.type === 'entrada' && f.paySessionId ? Number(f.paySessionId) : undefined, items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
       const w = warehouses.find((x) => x.id === Number(f.warehouseId))
-      onSaved(`${MOVE_TITLES[f.type].split(' ')[0]} ${data.ref} registrada en ${w?.name}`, data.alerts)
+      const paid = data.expense ? ` · gasto ${data.expense.number} de ${formatMoney(data.expense.amount)} en la caja ${data.expense.session}` : data.payError ? ` · no se descontó de la caja: ${data.payError}` : ''
+      onSaved(`${MOVE_TITLES[f.type].split(' ')[0]} ${data.ref} registrada en ${w?.name}${paid}`, data.alerts)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
   return (
@@ -121,12 +135,16 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
           <Field label="Bodega" htmlFor="mw" required><select id="mw" value={f.warehouseId} onChange={set('warehouseId')}><option value="">Selecciona…</option><WarehouseOptions sites={sites} warehouses={warehouses} /></select></Field>
           {f.type === 'entrada' ? <SupplierField id="ms" value={f} onChange={(v) => setF((x) => ({ ...x, ...v }))} allowFree placeholder="Sin proveedor" /> : <span />}
         </div>
-        {!single && <div className="item-row">
-          <select aria-label="Producto" value={pick} onChange={(e) => { setPick(e.target.value); add(e.target.value) }} style={{ flex: 1 }}>
+        {!single && <div className="item-row pick">
+          <select aria-label="Producto" value={pick} onChange={(e) => { if (e.target.value === '__new') { setNewProduct(true); return } setPick(e.target.value); add(e.target.value) }} style={{ flex: 1 }}>
             <option value="">{available.length ? 'Agregar producto…' : tracked.length ? 'Ya agregaste todos' : 'No hay productos con inventario'}</option>
+            {canCreate && <option value="__new">+ Crear producto nuevo…</option>}
             <ProductOptions products={available} />
           </select>
+          {canCreate && <button type="button" className="btn" onClick={() => setNewProduct(true)}><MdAdd /> Producto nuevo</button>}
         </div>}
+        {newProduct && <QuickProductModal supplierId={f.type === 'entrada' ? f.supplierId : null} onClose={() => setNewProduct(false)}
+          onSaved={(p) => { setNewProduct(false); setCreated((c) => [...c, p]); setItems((list) => [...list, { product: p, quantity: '', unitCost: p.cost, pack: false, boxes: '', perBox: '', boxCost: '' }]) }} />}
         {items.length > 0 && (
           <div className="mv-items">{items.map((i, n) => {
             const u = UNIT_SHORT[i.product.unit]
@@ -166,6 +184,16 @@ export const MovementModal = ({ products, sites, warehouses, defaults = {}, onCl
           })}</div>
         )}
         <div className="form-grid">
+          {f.type === 'entrada' && (
+            <div className="span-2">
+              <Field label="¿Cómo se pagó la compra?" htmlFor="mpay" hint={f.paySessionId ? `Se registra como gasto del turno por ${formatMoney(purchaseTotal)} y sale del efectivo de la caja.` : 'La entrada solo suma inventario; no descuenta nada de la caja. Registra el pago en Finanzas → Gastos o elige la caja.'}>
+                <select id="mpay" value={f.paySessionId} onChange={set('paySessionId')}>
+                  <option value="">No sale de la caja (crédito, transferencia o se registra en Finanzas)</option>
+                  {openSessions.map((x) => <option key={x.id} value={x.id}>Con el efectivo de la caja · {x.register} · {x.number}{x.site ? ` (${x.site})` : ''}</option>)}
+                </select>
+              </Field>
+            </div>
+          )}
           {f.type === 'entrada' && <Field label="N.º de factura" htmlFor="mi"><input id="mi" value={f.invoice} onChange={set('invoice')} /></Field>}
           <div className={f.type === 'entrada' ? '' : 'span-2'}><Field label={f.type === 'entrada' ? 'Nota' : 'Motivo'} htmlFor="mn" required={f.type !== 'entrada'}><input id="mn" value={f.note} onChange={set('note')} placeholder={f.type === 'baja' ? 'Ej. botella rota, producto vencido' : f.type === 'ajuste' ? 'Ej. conteo físico del cierre' : ''} /></Field></div>
         </div>
@@ -214,12 +242,12 @@ export const TransferModal = ({ products, sites, warehouses, defaults = {}, onCl
           <Field label="Hacia" htmlFor="tt" required><select id="tt" value={to} onChange={(e) => setTo(e.target.value)}><option value="">Bodega de destino…</option><WarehouseOptions sites={sites} warehouses={warehouses} exclude={from} /></select></Field>
         </div>
         {from && (
-          <div className="item-row">
+          <div className="item-row pick-qty">
             <select aria-label="Producto" value={pick} onChange={(e) => setPick(e.target.value)} style={{ flex: 1 }}>
               <option value="">{available.length ? 'Agregar producto…' : 'No hay más productos con existencias en esta bodega'}</option>
               <ProductOptions products={available} stockOf={inFrom} />
             </select>
-            <input aria-label="Cantidad" type="number" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Cant." style={{ width: 90 }} />
+            <input aria-label="Cantidad" type="number" step="any" min="0" value={qty} onChange={(e) => setQty(e.target.value)} placeholder="Cant." />
             <button type="button" className="btn" onClick={add} disabled={!pick}><MdAdd /> Agregar</button>
           </div>
         )}

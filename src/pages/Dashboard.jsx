@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart, MdStar, MdEmojiEvents } from 'react-icons/md'
+import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart, MdStar, MdEmojiEvents, MdLocalOffer, MdTrendingUp, MdFactCheck } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
@@ -21,6 +21,61 @@ const HourBars = ({ data }) => {
           <small>{d.hour}</small>
         </div>
       ))}
+    </div>
+  )
+}
+// Duración de un turno en vivo (se actualiza cada minuto).
+const useNow = (ms = 60000) => { const [n, setN] = useState(Date.now()); useEffect(() => { const t = setInterval(() => setN(Date.now()), ms); return () => clearInterval(t) }, [ms]); return n }
+const ProductRow = ({ p, rank, low }) => (
+  <li className="mix-row">
+    <span className="mix-rank">{rank}</span>
+    <div className="grow"><strong>{p.emoji} {p.name}</strong><small className="block muted">{p.category} · {formatMoney(p.price)}</small></div>
+    <div className="mix-num"><b>{p.qty ? p.qty.toLocaleString('es-CO') : 'Sin ventas'}</b>{p.qty > 0 && <small>{formatMoney(p.revenue)}</small>}</div>
+    {low && <Link to={`/promociones?producto=${p.id}&nombre=${encodeURIComponent(p.name)}`} className="btn btn-sm btn-icon" title="Crear una promoción para este producto" aria-label={`Crear promoción para ${p.name}`}><MdLocalOffer /></Link>}
+  </li>
+)
+const ShiftsAndProducts = ({ data }) => {
+  const now = useNow()
+  const sh = data.shifts
+  const mix = data.productMix
+  if (!sh && !mix) return null
+  return (
+    <div className="grid dash-mix">
+      <Card title="Turnos de caja" subtitle="Desde que se abre la caja hasta que se cierra" icon={<MdTimer />} actions={<Link to="/reportes?tab=cuadre" className="btn btn-sm"><MdFactCheck /> Cuadre del día</Link>}>
+        <div className="stack" style={{ gap: 10 }}>
+          {data.sessions.map((x) => (
+            <div key={x.id} className="shift-live">
+              <span className="dot-live" aria-hidden="true" />
+              <div className="grow"><strong>{x.register}</strong> <small className="muted">{x.number}</small><small className="block muted">Abrió {formatDateTime(x.openedAt)}</small></div>
+              <b>{minutesLabel(Math.max(0, Math.round((now - new Date(x.openedAt)) / 60000)))}</b>
+            </div>
+          ))}
+          {!data.sessions.length && <small className="muted">No hay turnos abiertos ahora.</small>}
+          {sh && sh.closed > 0 && <>
+            <div className="usage-kpis">
+              <div><span>Turno promedio</span><strong>{minutesLabel(sh.avgMinutes)}</strong><small>{sh.closed} turnos en 30 días</small></div>
+              <div><span>Más largo</span><strong>{minutesLabel(sh.maxMinutes)}</strong><small>Más corto {minutesLabel(sh.minMinutes)}</small></div>
+            </div>
+            <ul className="list">{sh.recent.slice(0, 4).map((r) => (
+              <li key={r.id}><span><strong>{r.number}</strong> <small className="muted">{r.register} · {formatDateTime(r.openedAt)}</small></span><small>{minutesLabel(r.minutes)}</small></li>
+            ))}</ul>
+          </>}
+        </div>
+      </Card>
+      {mix && <>
+        <Card title="Lo que más se vende" subtitle={`Últimos ${mix.days} días · por cantidad`} icon={<MdTrendingUp />} actions={<Link to="/reportes?tab=productos" className="btn btn-sm">Ver reporte</Link>}>
+          {!mix.top.length ? <Empty icon={<MdTrendingUp />}>Cuando se cobren pedidos verás aquí los productos estrella.</Empty> : (
+            <ol className="mix-list">{mix.top.map((p, i) => <ProductRow key={p.id} p={p} rank={i + 1} />)}</ol>
+          )}
+          {mix.top.length > 0 && <small className="hint">💡 Mantén siempre en stock los primeros y úsalos de gancho en combos.</small>}
+        </Card>
+        <Card title="Lo que menos se vende" subtitle={mix.unsold ? `${mix.unsold} producto${mix.unsold === 1 ? '' : 's'} de la carta sin ventas en ${mix.days} días` : `Últimos ${mix.days} días · productos de la carta`} icon={<MdTrendingDown />}>
+          {!mix.bottom.length ? <Empty icon={<MdTrendingDown />}>Sin productos en la carta todavía.</Empty> : (
+            <ol className="mix-list">{mix.bottom.map((p, i) => <ProductRow key={p.id} p={p} rank={i + 1} low />)}</ol>
+          )}
+          {mix.bottom.length > 0 && <small className="hint">💡 Dales una promoción por horario (happy hour), destácalos en la carta o pídele al mesero que los sugiera. Si siguen sin venderse, considera sacarlos.</small>}
+        </Card>
+      </>}
     </div>
   )
 }
@@ -79,6 +134,7 @@ const Dashboard = () => {
             <div className="row-end" style={{ padding: '0 16px 14px' }}><Link to="/mesas" className="btn btn-sm">Mesas</Link><Link to="/caja" className="btn btn-sm">Caja</Link></div>
           </Card>
         </div>
+        <ShiftsAndProducts data={data} />
         {data.tableUsage && (
           <Card title="Uso de las mesas" subtitle="Últimos 30 días · cuánto dura una mesa ocupada y cuánto vende por hora" icon={<MdTimer />}
             actions={<Link to="/reportes?tab=mesas" className="btn btn-sm">Ver reporte</Link>}>

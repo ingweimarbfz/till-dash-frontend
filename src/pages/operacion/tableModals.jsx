@@ -12,7 +12,7 @@ export const ALIAS_MAX = 40
 const ALIAS_IDEAS = ['Chica de rojo', 'Solo hombres', 'Cumpleaños', 'Pareja', 'Ejecutivos']
 
 // ---------- Abrir mesa (con alias opcional) o pedido para llevar / domicilio ----------
-export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened }) => {
+export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened, inline = false }) => {
   const [f, setF] = useState({ alias: '', guests: table ? String(Math.min(table.seats, 2)) : '', customerName: '', customerPhone: '', customerAddress: '', note: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -27,9 +27,8 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
   const title = table ? `Abrir ${table.name}` : type === 'domicilio' ? 'Nuevo domicilio' : 'Pedido para llevar'
-  return (
-    <Modal title={title} onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="open-form" className="btn btn-primary" disabled={saving}>{saving && <Spinner />} {table ? 'Abrir y agregar productos' : 'Abrir pedido'}</button></>}>
+  const footer = <><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="open-form" className="btn btn-primary" disabled={saving}>{saving && <Spinner />} {table ? 'Abrir y agregar productos' : 'Abrir pedido'}</button></>
+  const form = (
       <form id="open-form" className="form-grid" onSubmit={submit} noValidate>
         {table && <div className="span-2">
           <Field label="Alias de la mesa (opcional)" htmlFor="oal" hint="Para reconocerla mientras está abierta. Se borra al cerrar la mesa.">
@@ -44,8 +43,9 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
         <div className="span-2"><Field label="Nota" htmlFor="ot"><input id="ot" value={f.note} onChange={set('note')} placeholder="Ej. celebran un cumpleaños" /></Field></div>
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
-    </Modal>
   )
+  if (inline) return <div className="open-inline"><div className="row-between"><h3 style={{ margin: 0 }}>{title}</h3>{table?.seats ? <small className="muted">{table.seats} puestos</small> : null}</div>{form}<div className="row-end">{footer}</div></div>
+  return <Modal title={title} onClose={onClose} footer={footer}>{form}</Modal>
 }
 
 // ---------- Alias temporal de una mesa ocupada ----------

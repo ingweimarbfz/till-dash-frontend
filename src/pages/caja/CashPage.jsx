@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong
+  MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong, MdLockReset, MdCheck, MdClose
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { ShiftExpenseModal, FundsRequestModal, ShiftExpensesCard, RequestsTab } from './shiftExpenses'
@@ -141,6 +141,18 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
       <form id="close-cash" className="close-grid" onSubmit={submit} noValidate>
         <section className="close-step">
           <h4><span>1</span> Arqueo</h4>
+          <div className="arqueo-sales">
+            <div className="row-between"><strong>Cobrado en el turno</strong><small className="muted">{summary.orders} pedido{summary.orders === 1 ? '' : 's'}</small></div>
+            {!summary.byMethod.length ? <small className="muted">No hubo cobros en este turno.</small> : (
+              <dl className="order-totals" style={{ margin: 0 }}>
+                {[...summary.byMethod].sort((a, b) => (a.method === 'efectivo' ? -1 : b.method === 'efectivo' ? 1 : b.amount - a.amount)).map((x) => (
+                  <div key={x.method}><dt>{x.label || x.method}{x.method !== 'efectivo' && <small className="muted"> · no entra a la caja</small>}</dt><dd>{formatMoney(x.amount)}</dd></div>
+                ))}
+                <div className="total"><dt>Total cobrado</dt><dd>{formatMoney(summary.byMethod.reduce((a, x) => a + x.amount, 0))}</dd></div>
+              </dl>
+            )}
+          </div>
+          <small className="muted">Efectivo que debe haber en la caja</small>
           <dl className="order-totals" style={{ margin: 0 }}>
             <div><dt>Base de apertura</dt><dd>{formatMoney(session.openingAmount)}</dd></div>
             <div><dt>Ventas y abonos en efectivo</dt><dd>{formatMoney(summary.byMethod.find((m) => m.method === 'efectivo')?.amount || 0)}</dd></div>
@@ -199,6 +211,98 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
   )
 }
 
+// ---------- Reabrir un turno cerrado ----------
+// El cajero pide reabrir con el motivo; el administrador aprueba (o, si lo pide él, se reabre de una vez).
+const ReopenModal = ({ session, admin, onClose, onDone }) => {
+  const [reason, setReason] = useState('')
+  const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  const submit = async (e) => {
+    e.preventDefault(); setError('')
+    if (reason.trim().length < 5) return setError('Explica el motivo para reabrir el turno.')
+    setSaving(true)
+    try { const { data } = await api.post(`/caja/turnos/${session.id}/reabrir`, { reason }); onDone(data) } catch (err) { setError(errorMessage(err)); setSaving(false) }
+  }
+  const snap = session
+  return (
+    <Modal title={`${admin ? 'Reabrir' : 'Pedir reabrir'} el turno ${session.number}`} onClose={onClose}
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="reopen-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLockReset />} {admin ? 'Reabrir turno' : 'Enviar solicitud'}</button></>}>
+      <form id="reopen-form" className="stack" style={{ gap: 12 }} onSubmit={submit} noValidate>
+        <div className="alert warn">Al reabrir se anula el cierre: vuelven a la caja los {formatMoney(snap.toVault)} que pasaron a la bóveda, las propinas pagadas ({formatMoney(snap.tipsPaid)}) y la base que quedaba. Corrige lo necesario y cierra el turno de nuevo.</div>
+        <Field label="Motivo de la reapertura" htmlFor="rr" required hint={admin ? 'Queda en la auditoría y se avisa por Telegram.' : 'El administrador recibe la solicitud con este motivo.'}>
+          <textarea id="rr" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus placeholder="Ej. registré un pago en efectivo que fue por Nequi; conté mal los billetes de 50.000" />
+        </Field>
+        {session.reopen?.until && <small className="muted">Se puede reabrir hasta el {formatDateTime(session.reopen.until)}, siempre que no se abra otro turno en esta caja.</small>}
+        {error && <div className="alert bad">{error}</div>}
+      </form>
+    </Modal>
+  )
+}
+
+const ReopenBox = ({ s, admin, onAsk, onResolved, toast }) => {
+  const r = s.reopen
+  const [busy, setBusy] = useState('')
+  if (!r || s.status !== 'cerrada') return null
+  const resolve = async (action) => {
+    const note = action === 'rechazar' ? window.prompt('Motivo del rechazo') : ''
+    if (action === 'rechazar' && !note) return
+    setBusy(action)
+    try { await api.post(`/caja/reaperturas/${r.pending.id}/${action}`, { note }); toast(action === 'aprobar' ? `Turno ${s.number} reabierto` : 'Solicitud rechazada'); onResolved() } catch (e) { toast(errorMessage(e), 'bad') }
+    setBusy('')
+  }
+  if (r.pending) {
+    return (
+      <div className="alert warn reopen-box">
+        <MdLockReset />
+        <div className="grow"><strong>{r.pending.requestedBy} pidió reabrir este turno</strong><small className="block">{r.pending.reason}</small></div>
+        {admin && <div className="card-actions">
+          <button type="button" className="btn btn-sm" onClick={() => resolve('rechazar')} disabled={Boolean(busy)}>{busy === 'rechazar' ? <Spinner /> : <MdClose />} Rechazar</button>
+          <button type="button" className="btn btn-sm btn-primary" onClick={() => resolve('aprobar')} disabled={Boolean(busy) || !r.allowed}>{busy === 'aprobar' ? <Spinner /> : <MdCheck />} Reabrir</button>
+        </div>}
+      </div>
+    )
+  }
+  if (!r.allowed) return r.hours > 0 ? <small className="muted">🔒 Este turno ya no se puede reabrir. {r.why}</small> : null
+  return (
+    <div className="reopen-box">
+      <small className="muted grow">¿Hubo un error en el cierre? Se puede reabrir hasta el {formatDateTime(r.until)}{admin ? '' : ' con autorización del administrador'}.</small>
+      <button type="button" className="btn btn-sm" onClick={onAsk}><MdLockReset /> {admin ? 'Reabrir turno' : 'Pedir reabrir'}</button>
+    </div>
+  )
+}
+
+// Solicitudes de reapertura (administrador).
+const ReopenTab = ({ onCount, onOpenSession }) => {
+  const [d, setD] = useState(null)
+  const [toast, toastNode] = useToast()
+  const load = useCallback(() => api.get('/caja/reaperturas').then(({ data }) => { setD(data); onCount?.(data.pending) }).catch(() => setD({ rows: [], hours: 0 })), [onCount])
+  useEffect(() => { load() }, [load])
+  const resolve = async (r, action) => {
+    const note = action === 'rechazar' ? window.prompt('Motivo del rechazo') : ''
+    if (action === 'rechazar' && !note) return
+    try { await api.post(`/caja/reaperturas/${r.id}/${action}`, { note }); toast(action === 'aprobar' ? `Turno ${r.session} reabierto` : 'Solicitud rechazada'); load(); if (action === 'aprobar') onOpenSession?.() } catch (e) { toast(errorMessage(e), 'bad') }
+  }
+  if (!d) return <div className="splash" style={{ minHeight: 160 }}><Spinner /></div>
+  return (
+    <Card title="Reabrir turnos" subtitle={d.hours > 0 ? `Un turno se puede reabrir hasta ${d.hours} h después del cierre y antes de abrir otro en la misma caja. Cámbialo en Configuración.` : 'La reapertura está desactivada (0 horas en Configuración).'} icon={<MdLockReset />} flush>
+      {!d.rows.length ? <Empty icon={<MdLockReset />}>No hay solicitudes para reabrir turnos.</Empty> : (
+        <div className="table-wrap"><table className="table">
+          <thead><tr><th>Turno</th><th>Motivo</th><th className="hide-sm">Pidió</th><th>Estado</th><th /></tr></thead>
+          <tbody>{d.rows.map((r) => (
+            <tr key={r.id}>
+              <td><strong>{r.session}</strong><small className="block muted">{r.register}{r.site ? ` · ${r.site}` : ''}</small></td>
+              <td>{r.reason}{r.resolution && <small className="block muted">💬 {r.resolution}</small>}{r.snapshot && <small className="block muted">Cierre anulado: contado {formatMoney(r.snapshot.counted)}, diferencia {formatMoney(r.snapshot.difference)}</small>}</td>
+              <td className="hide-sm">{r.requestedBy}<small className="block muted">{formatDateTime(r.createdAt)}</small></td>
+              <td><Badge tone={r.status === 'pendiente' ? 'warn' : r.status === 'aprobada' ? 'ok' : 'muted'}>{r.status === 'aprobada' ? 'Reabierto' : r.statusLabel}</Badge></td>
+              <td className="num">{r.status === 'pendiente' && <div className="card-actions"><button type="button" className="btn btn-sm" onClick={() => resolve(r, 'rechazar')}><MdClose /> Rechazar</button><button type="button" className="btn btn-sm btn-primary" onClick={() => resolve(r, 'aprobar')}><MdCheck /> Reabrir</button></div>}</td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      )}
+      {toastNode}
+    </Card>
+  )
+}
+
 // ---------- Detalle de un turno ----------
 const SessionView = ({ id, canClose, onChanged }) => {
   const { user } = useAuth()
@@ -216,6 +320,8 @@ const SessionView = ({ id, canClose, onChanged }) => {
   const open = s.status === 'abierta'
   return (
     <div className="stack">
+      {s.reopenCount > 0 && open && <div className="alert info">🔓 Turno reabierto {s.reopenCount === 1 ? '' : `${s.reopenCount} veces `}el {formatDateTime(s.reopenedAt)}. Corrige lo necesario y ciérralo de nuevo.</div>}
+      <ReopenBox s={s} admin={admin} onAsk={() => setModal('reopen')} onResolved={() => { load(); onChanged() }} toast={toast} />
       <div className="kpis">
         <Kpi label="Ventas" value={formatMoney(m.sales)} note={`${m.orders} pedidos`} icon={MdPointOfSale} tone="brand" />
         <Kpi label="Propinas" value={formatMoney(m.tips)} />
@@ -261,7 +367,8 @@ const SessionView = ({ id, canClose, onChanged }) => {
       {modal?.expense && <ShiftExpenseModal session={s} info={modal.expense} admin={admin} onClose={() => setModal(null)} onAskFunds={(initial) => setModal({ request: initial })} onDone={(d) => { setModal(null); toast(`Gasto ${d.number} registrado`); setVer((v) => v + 1); load() }} />}
       {modal?.request && <FundsRequestModal session={s} initial={modal.request} onClose={() => setModal(null)} onDone={(d) => { setModal(null); toast(`Solicitud ${d.number} enviada al administrador`); setVer((v) => v + 1) }} />}
       {modal === 'move' && <MoveModal session={s} admin={admin} onClose={() => setModal(null)} onDone={(t) => { setModal(null); toast(t === 'ingreso' ? 'Ingreso registrado' : 'Egreso registrado'); load() }} />}
-      {modal === 'close' && <CloseModal session={s} summary={m} onClose={() => setModal(null)} onDone={(d) => { setModal(null); setS(d); toast(`Turno ${d.number} cerrado`); onChanged() }} />}
+      {modal === 'close' && <CloseModal session={s} summary={m} onClose={() => setModal(null)} onDone={(d) => { setModal(null); setS(d); load(); toast(`Turno ${d.number} cerrado`); onChanged() }} />}
+      {modal === 'reopen' && <ReopenModal session={s} admin={admin} onClose={() => setModal(null)} onDone={(d) => { setModal(null); toast(d.reopened ? `Turno ${s.number} reabierto. Corrige y ciérralo de nuevo.` : 'Solicitud enviada al administrador'); load(); onChanged() }} />}
       {toastNode}
     </div>
   )
@@ -348,9 +455,14 @@ const CashPage = () => {
   const { user } = useAuth()
   const admin = ADMIN.includes(user.role)
   const [params] = useSearchParams()
-  const [tab, setTab] = useState(['boveda', 'solicitudes'].includes(params.get('tab')) && admin ? params.get('tab') : 'turno')
+  const [tab, setTab] = useState(['boveda', 'solicitudes', 'reaperturas'].includes(params.get('tab')) && admin ? params.get('tab') : 'turno')
   const [pending, setPending] = useState(0)
-  useEffect(() => { if (admin) api.get('/caja/solicitudes', { params: { estado: 'pendiente' } }).then(({ data }) => setPending(data.pending)).catch(() => {}) }, [admin])
+  const [reopenPending, setReopenPending] = useState(0)
+  useEffect(() => {
+    if (!admin) return
+    api.get('/caja/solicitudes', { params: { estado: 'pendiente' } }).then(({ data }) => setPending(data.pending)).catch(() => {})
+    api.get('/caja/reaperturas', { params: { estado: 'pendiente' } }).then(({ data }) => setReopenPending(data.pending)).catch(() => {})
+  }, [admin])
   const [registers, setRegisters] = useState(null)
   const [current, setCurrent] = useState(null)
   const [modal, setModal] = useState(null)
@@ -372,7 +484,7 @@ const CashPage = () => {
         <Link to="/cuentas-por-cobrar" className="btn"><MdReceiptLong /> Cuentas por cobrar</Link>
         {admin && <button type="button" className="btn" onClick={() => setModal('register')}><MdAdd /> Caja</button>}
       </PageHead>
-      <Tabs value={tab} onChange={(t) => { setTab(t); if (t === 'turno') setCurrent(null) || load() }} tabs={[['turno', 'Turnos'], ['historial', 'Historial'], ...(admin ? [['solicitudes', pending ? `Solicitudes (${pending})` : 'Solicitudes'], ['boveda', 'Bóveda']] : [])]} />
+      <Tabs value={tab} onChange={(t) => { setTab(t); if (t === 'turno') setCurrent(null) || load() }} tabs={[['turno', 'Turnos'], ['historial', 'Historial'], ...(admin ? [['solicitudes', pending ? `Solicitudes (${pending})` : 'Solicitudes'], ['reaperturas', reopenPending ? `Reabrir turnos (${reopenPending})` : 'Reabrir turnos'], ['boveda', 'Bóveda']] : [])]} />
       {tab === 'turno' && (!registers ? <div className="splash" style={{ minHeight: 160 }}><Spinner /></div> : <>
         <div className="register-grid">{registers.filter((r) => r.active).map((r) => (
           <div key={r.id} className={`register${r.session ? ' open' : ''}${current && r.session?.id === current.id ? ' on' : ''}`}>
@@ -396,6 +508,7 @@ const CashPage = () => {
       {tab === 'historial' && (current && current.fromHistory ? <><button type="button" className="btn btn-ghost btn-sm" onClick={() => setCurrent(null)}>← Volver al historial</button><SessionView key={current.id} id={current.id} canClose={false} onChanged={load} /></> : <HistoryTab onPick={(s) => setCurrent({ ...s, fromHistory: true })} />)}
       {tab === 'boveda' && admin && <VaultTab />}
       {tab === 'solicitudes' && admin && <RequestsTab onCount={setPending} />}
+      {tab === 'reaperturas' && admin && <ReopenTab onCount={setReopenPending} onOpenSession={load} />}
       {modal?.open && <OpenModal register={modal.open} admin={admin} onClose={() => setModal(null)} onDone={(s) => { setModal(null); toast(`Turno ${s.number} abierto`); setCurrent(s); load() }} />}
       {modal === 'register' && (
         <Modal title="Nueva caja" onClose={() => setModal(null)} footer={<><button type="button" className="btn" onClick={() => setModal(null)}>Cancelar</button><button type="submit" form="reg-form" className="btn btn-primary">Crear</button></>}>

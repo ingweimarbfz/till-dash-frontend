@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  MdArrowBack, MdSearch, MdAdd, MdRemove, MdSend, MdReceipt, MdPointOfSale, MdBlock, MdCardGiftcard, MdSwapHoriz, MdPrint, MdDelete, MdNotes, MdClose, MdLabel
+  MdArrowBack, MdSearch, MdAdd, MdRemove, MdSend, MdReceipt, MdPointOfSale, MdBlock, MdCardGiftcard, MdSwapHoriz, MdPrint, MdDelete, MdNotes, MdClose, MdLabel, MdOpenInFull
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useSettings } from '../../context/SettingsContext'
@@ -56,9 +56,11 @@ const TipAskModal = ({ o, settings, initial, onClose, onDone }) => {
 }
 
 // Pedido: agregar productos (con precio de promoción), enviar la comanda, cortesías, anulaciones y cobro.
-const OrderPage = () => {
-  const { id } = useParams()
+// embedded: se muestra en el panel lateral de Mesas (sin salir del salón); onClose cierra el panel
+// y onChanged refresca las mesas.
+export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
   const navigate = useNavigate()
+  const [pane, setPane] = useState(null)
   const { settings } = useSettings()
   const can = useCan()
   const [o, setO] = useState(null)
@@ -96,25 +98,29 @@ const OrderPage = () => {
     setSending(true)
     try {
       const { data } = await api.post(`/pedidos/${o.id}/items`, { items: cart.map((x) => ({ productId: x.product.id, quantity: x.quantity, note: x.note })) })
-      setO((prev) => ({ ...prev, ...data })); setCart([]); toast('Comanda enviada')
+      setO((prev) => ({ ...prev, ...data })); setCart([]); toast('Comanda enviada'); onChanged?.(); if (embedded) setPane('pedido')
     } catch (e) { toast(errorMessage(e), 'bad') }
     setSending(false)
   }
-  const act = async (fn, msg) => { try { const { data } = await fn(); setO((prev) => ({ ...prev, ...data })); setModal(null); if (msg) toast(msg) } catch (e) { toast(errorMessage(e), 'bad'); throw e } }
+  const act = async (fn, msg) => { try { const { data } = await fn(); setO((prev) => ({ ...prev, ...data })); setModal(null); if (msg) toast(msg); onChanged?.() } catch (e) { toast(errorMessage(e), 'bad'); throw e } }
 
   if (error) return <Card><Empty>{error}</Empty></Card>
   if (!o) return <div className="splash"><Spinner /></div>
   const open = o.status === 'abierto'
   const live = o.items.filter((i) => i.status !== 'anulado')
   const voided = o.items.filter((i) => i.status === 'anulado')
-  const back = () => navigate(o.type === 'mesa' && open ? '/mesas' : -1)
+  const back = () => (embedded ? onClose?.() : navigate(o.type === 'mesa' && open ? '/mesas' : -1))
+  const view = embedded ? (pane || (live.length ? 'pedido' : 'carta')) : null
+  const showMenu = open && seller && (!embedded || view === 'carta')
+  const showOrder = !embedded || view === 'pedido' || !(open && seller)
 
   return (
-    <div className="stack">
+    <div className={`stack${embedded ? ' order-embedded' : ''}`}>
       <div className="row-between wrap" style={{ gap: 10 }}>
         <div className="row" style={{ gap: 10, alignItems: 'center' }}>
-          <button type="button" className="btn btn-ghost btn-icon" onClick={back} aria-label="Volver"><MdArrowBack /></button>
+          <button type="button" className="btn btn-ghost btn-icon" onClick={back} aria-label={embedded ? 'Cerrar panel' : 'Volver'} title={embedded ? 'Cerrar' : 'Volver'}>{embedded ? <MdClose /> : <MdArrowBack />}</button>
           <div>
+            {embedded && <button type="button" className="btn btn-ghost btn-sm panel-expand" onClick={() => navigate(`/pedidos/${o.id}`)} title="Abrir en pantalla completa"><MdOpenInFull /></button>}
             <h1 className="page-title" style={{ margin: 0 }}>{o.table || o.typeLabel} <small className="muted">· {o.number}</small> <Badge tone={ORDER_TONE[o.status]}>{ORDER_STATUS[o.status]}</Badge>{o.alias && <button type="button" className="tbl-alias as-btn" onClick={() => open && seller && setModal('alias')} title="Editar alias"><MdLabel /> {o.alias}</button>}{o.billRequestedAt && open && <Badge tone="warn">Pidió la cuenta</Badge>}</h1>
             <small className="muted">{[o.waiter?.name, o.guests && `${o.guests} personas`, o.customerName, `abierto ${since(o.openedAt)}`, o.site].filter(Boolean).join(' · ')}</small>
           </div>
@@ -129,8 +135,14 @@ const OrderPage = () => {
         </div>}
       </div>
 
-      <div className={open && seller ? 'order-layout' : ''}>
-        {open && seller && (
+      {embedded && open && seller && (
+        <div className="seg panel-seg" role="tablist">
+          <button type="button" role="tab" aria-selected={view === 'carta'} className={`btn btn-sm${view === 'carta' ? ' on' : ''}`} onClick={() => setPane('carta')}><MdAdd /> Agregar productos{cart.length > 0 && <Badge tone="brand">{cart.reduce((a, x) => a + x.quantity, 0)}</Badge>}</button>
+          <button type="button" role="tab" aria-selected={view === 'pedido'} className={`btn btn-sm${view === 'pedido' ? ' on' : ''}`} onClick={() => setPane('pedido')}><MdNotes /> Pedido · {formatMoney(o.total)}</button>
+        </div>
+      )}
+      <div className={open && seller && !embedded ? 'order-layout' : embedded ? 'stack' : ''}>
+        {showMenu && (
           <Card flush className="order-menu">
             <div className="order-menu-head">
               <div className="input-icon"><MdSearch /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o código" aria-label="Buscar producto" /></div>
@@ -173,6 +185,7 @@ const OrderPage = () => {
             </Card>
           )}
 
+          {showOrder && <>
           <Card title="Pedido" subtitle={`${live.length} producto${live.length === 1 ? '' : 's'}`} flush>
             {!live.length ? <Empty icon={<MdNotes />}>{open ? 'Toca los productos de la carta para agregarlos.' : 'Sin productos.'}</Empty> : (
               <ul className="order-items">{live.map((i) => (
@@ -211,11 +224,12 @@ const OrderPage = () => {
               <ul className="list">{voided.map((i) => <li key={i.id}><span><s>{i.quantity} × {i.name}</s> <small>{i.voidReason}</small></span><small>{i.user}</small></li>)}</ul>
             </details>
           )}
+          </>}
         </div>
       </div>
 
       {modal === 'bill' && <TipAskModal o={o} settings={settings} initial={tipWanted} onClose={() => setModal(null)} onDone={(w) => { setTipWanted(w); setModal(null) }} />}
-      {modal === 'charge' && <ChargeModal order={o} tipWanted={tipWanted} onClose={() => setModal(null)} onCharged={() => { setModal(null); navigate(o.type === 'mesa' ? '/mesas' : '/pedidos') }} />}
+      {modal === 'charge' && <ChargeModal order={o} tipWanted={tipWanted} onClose={() => setModal(null)} onCharged={() => { setModal(null); if (embedded) { onChanged?.(); onClose?.() } else navigate(o.type === 'mesa' ? '/mesas' : '/pedidos') }} />}
       {modal === 'move' && <MoveModal order={o} fromName={o.table} onClose={() => setModal(null)} onMoved={(data, t) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(`Pedido trasladado a ${t.name}`) }} />}
       {modal === 'alias' && <AliasModal order={o} tableName={o.table || o.number} onClose={() => setModal(null)} onSaved={(data) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(data.alias ? `Alias: ${data.alias}` : 'Alias quitado') }} />}
       {modal === 'void' && <ReasonModal title={`Anular el pedido ${o.number}`} label="Motivo" placeholder="Ej. el cliente se fue sin consumir" confirm="Anular pedido" danger onClose={() => setModal(null)} onConfirm={(reason) => act(() => api.post(`/pedidos/${o.id}/anular`, { reason }), 'Pedido anulado: el inventario volvió a la bodega')} />}
@@ -224,6 +238,11 @@ const OrderPage = () => {
       {toastNode}
     </div>
   )
+}
+
+const OrderPage = () => {
+  const { id } = useParams()
+  return <OrderView key={id} id={id} />
 }
 
 export default OrderPage
