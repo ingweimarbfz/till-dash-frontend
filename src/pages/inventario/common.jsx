@@ -70,6 +70,78 @@ export const ProductOptions = ({ products, stockOf }) => {
 
 const stockIn = (p, warehouseId) => p.byWarehouse?.find((w) => w.warehouseId === Number(warehouseId))?.stock ?? 0
 
+// ---------- TD-011 · ¿De dónde se pagó la compra? ----------
+// Caja del turno, cuenta o subcuenta de Finanzas, a crédito con el proveedor o inventario inicial (solo super administrador).
+// value: { payment, paySessionId, payAccount }. El backend valida el saldo y bloquea si no alcanza.
+export const PAYMENTS = { cuenta: 'Cuenta de Finanzas', caja: 'Efectivo de la caja', credito: 'A crédito con el proveedor', inicial: 'Inventario inicial (ya estaba en la bodega)' }
+export const usePurchaseSources = () => {
+  const [sessions, setSessions] = useState([])
+  const [funds, setFunds] = useState(null)
+  useEffect(() => {
+    api.get('/caja/turnos', { params: { estado: 'abierta', sede: undefined } }).then(({ data }) => setSessions(data || [])).catch(() => setSessions([]))
+    api.get('/finanzas/fondos', { params: { sede: undefined } }).then(({ data }) => setFunds((data.funds || []).filter((x) => x.active))).catch(() => setFunds([]))
+  }, [])
+  return { sessions, funds }
+}
+export const paymentError = (v, total, { supplierId } = {}) => {
+  if (!v.payment) return 'Elige de dónde se pagó la compra.'
+  if (v.payment === 'inicial') return null
+  if (!(total > 0)) return 'Escribe el costo de los productos para registrar el pago.'
+  if (v.payment === 'caja' && !v.paySessionId) return 'Elige el turno de caja del que sale el dinero.'
+  if (v.payment === 'cuenta' && !v.payAccount) return 'Elige la cuenta de Finanzas con la que se pagó.'
+  if (v.payment === 'credito' && !supplierId) return 'Para comprar a crédito elige un proveedor registrado.'
+  return null
+}
+export const PurchasePaymentField = ({ id = 'pp', value, onChange, total, sources, supplierId }) => {
+  const { user } = useAuth()
+  const { sessions, funds } = sources
+  const owner = user?.role === 'superadmin'
+  const set = (k) => (e) => onChange({ ...value, [k]: e.target.value })
+  const fund = funds?.find((x) => x.key === value.payAccount)
+  const short = (v) => v === 'cuenta' && fund && total > fund.balance
+  const hint = {
+    cuenta: fund ? (total > fund.balance ? `No alcanza: ${fund.name} tiene ${formatMoney(fund.balance)} y la compra es de ${formatMoney(total)}. Ingresa dinero en Finanzas, elige otra cuenta o regístrala a crédito.` : `Sale ${formatMoney(total)} de ${fund.name} (disponible ${formatMoney(fund.balance)}) y queda como gasto de compras.`) : 'Elige la cuenta; se valida que tenga el dinero.',
+    caja: 'Sale del efectivo del turno y queda como gasto del turno.',
+    credito: supplierId ? `Queda una cuenta por pagar de ${formatMoney(total)} con el proveedor. La abonas en Finanzas → Cuentas por pagar.` : 'Elige arriba un proveedor registrado para comprar a crédito.',
+    inicial: 'Solo suma inventario: es mercancía que el negocio ya tenía. No mueve dinero.'
+  }[value.payment] || 'Toda compra debe decir de dónde salió el dinero.'
+  return (
+    <div className="form-grid">
+      <Field label="¿De dónde se pagó la compra?" htmlFor={id} required>
+        <select id={id} value={value.payment || ''} onChange={(e) => onChange({ ...value, payment: e.target.value })}>
+          <option value="">Selecciona…</option>
+          {Object.entries(PAYMENTS).filter(([k]) => k !== 'inicial' || owner).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </Field>
+      {value.payment === 'cuenta' && (
+        <Field label="Cuenta" htmlFor={`${id}-acc`} required>
+          <select id={`${id}-acc`} value={value.payAccount || ''} onChange={set('payAccount')}>
+            <option value="">{funds === null ? 'Cargando…' : funds.length ? 'Selecciona…' : 'No hay cuentas'}</option>
+            {(funds || []).map((x) => <option key={x.key} value={x.key}>{x.kind === 'subcuenta' ? `${x.parent} › ${x.name}` : x.name} · {formatMoney(x.balance)}</option>)}
+          </select>
+        </Field>
+      )}
+      {value.payment === 'caja' && (
+        <Field label="Turno de caja" htmlFor={`${id}-ses`} required>
+          <select id={`${id}-ses`} value={value.paySessionId || ''} onChange={set('paySessionId')}>
+            <option value="">{sessions.length ? 'Selecciona…' : 'No hay turnos abiertos'}</option>
+            {sessions.map((x) => <option key={x.id} value={x.id}>{x.register} · {x.number}{x.site ? ` (${x.site})` : ''}</option>)}
+          </select>
+        </Field>
+      )}
+      <small className={`hint span-2${short(value.payment) ? ' bad' : ''}`} style={short(value.payment) ? { color: 'var(--bad, #c0392b)' } : undefined}>{hint}</small>
+    </div>
+  )
+}
+export const paymentBody = (v) => ({
+  payment: v.payment,
+  paySessionId: v.payment === 'caja' ? Number(v.paySessionId) : undefined,
+  payAccount: v.payment === 'cuenta' ? v.payAccount : undefined
+})
+export const paymentNote = (data) => data?.expense ? ` · gasto ${data.expense.number} de ${formatMoney(data.expense.amount)} ${data.expense.session ? `en la caja ${data.expense.session}` : `desde ${data.expense.account}`}`
+  : data?.payable ? ` · cuenta por pagar ${data.payable.number} de ${formatMoney(data.payable.amount)} con ${data.payable.supplier}, vence ${data.payable.dueOn}`
+    : data?.payError ? ` · no se registró el pago: ${data.payError}` : ''
+
 // ---------- Entrada, ajuste o baja de varios productos en una bodega ----------
 const MOVE_TITLES = { entrada: 'Entrada (compra)', ajuste: 'Ajuste (+ o −)', baja: 'Baja (daño, pérdida o vencimiento)' }
 export const MovementModal = ({ products: baseProducts, sites, warehouses, defaults = {}, onClose, onSaved }) => {
@@ -78,12 +150,11 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
   const [created, setCreated] = useState([])
   const products = useMemo(() => [...baseProducts, ...created.filter((c) => !baseProducts.some((p) => p.id === c.id))], [baseProducts, created])
   const [newProduct, setNewProduct] = useState(false)
-  // Turnos de caja abiertos, por si la compra se paga con el efectivo de la caja.
-  const [openSessions, setOpenSessions] = useState([])
-  useEffect(() => { api.get('/caja/turnos', { params: { estado: 'abierta', sede: undefined } }).then(({ data }) => setOpenSessions(data || [])).catch(() => setOpenSessions([])) }, [])
+  // Turnos abiertos y cuentas de Finanzas con las que se puede pagar la compra.
+  const sources = usePurchaseSources()
   const [f, setF] = useState(() => {
     const p = defaults.productId ? baseProducts.find((x) => x.id === Number(defaults.productId)) : null
-    return { type: 'entrada', warehouseId: '', supplierId: p?.supplierId || null, supplier: p?.supplier || '', invoice: '', note: '', paySessionId: '', ...defaults }
+    return { type: 'entrada', warehouseId: '', supplierId: p?.supplierId || null, supplier: p?.supplier || '', invoice: '', note: '', payment: '', paySessionId: '', payAccount: '', ...defaults }
   })
   const [items, setItems] = useState([])
   const [pick, setPick] = useState(defaults.productId ? String(defaults.productId) : '')
@@ -111,18 +182,18 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (!f.warehouseId) return setError('Selecciona la bodega.')
-    if (f.type === 'entrada' && f.paySessionId && !(purchaseTotal > 0)) return setError('Escribe el costo de los productos para descontarlo de la caja.')
     if (!items.length) return setError('Agrega al menos un producto.')
     const badBox = items.find((i) => boxed && i.pack && !(Number(i.boxes) > 0 && Number(i.perBox) > 0 && Number.isInteger(Number(i.perBox))))
     if (badBox) return setError(`Escribe cuántas cajas y cuántas unidades trae cada caja de ${badBox.product.name}.`)
     const bad = items.find((i) => { const q = real(i).quantity; return !(q !== 0 && Number.isFinite(q)) || (f.type !== 'ajuste' && q < 0) })
     if (bad) return setError(`Revisa la cantidad de ${bad.product.name}.`)
     if (f.type !== 'entrada' && !f.note.trim()) return setError('Escribe el motivo.')
+    if (f.type === 'entrada') { const pe = paymentError(f, purchaseTotal, { supplierId: f.supplierId }); if (pe) return setError(pe) }
     setSaving(true)
     try {
-      const { data } = await api.post('/inventario/movimientos', { ...f, paySessionId: f.type === 'entrada' && f.paySessionId ? Number(f.paySessionId) : undefined, items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
+      const { data } = await api.post('/inventario/movimientos', { ...f, payment: undefined, paySessionId: undefined, payAccount: undefined, ...(f.type === 'entrada' ? paymentBody(f) : {}), items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
       const w = warehouses.find((x) => x.id === Number(f.warehouseId))
-      const paid = data.expense ? ` · gasto ${data.expense.number} de ${formatMoney(data.expense.amount)} en la caja ${data.expense.session}` : data.payError ? ` · no se descontó de la caja: ${data.payError}` : ''
+      const paid = paymentNote(data)
       onSaved(`${MOVE_TITLES[f.type].split(' ')[0]} ${data.ref} registrada en ${w?.name}${paid}`, data.alerts)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
@@ -186,12 +257,7 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
         <div className="form-grid">
           {f.type === 'entrada' && (
             <div className="span-2">
-              <Field label="¿Cómo se pagó la compra?" htmlFor="mpay" hint={f.paySessionId ? `Se registra como gasto del turno por ${formatMoney(purchaseTotal)} y sale del efectivo de la caja.` : 'La entrada solo suma inventario; no descuenta nada de la caja. Registra el pago en Finanzas → Gastos o elige la caja.'}>
-                <select id="mpay" value={f.paySessionId} onChange={set('paySessionId')}>
-                  <option value="">No sale de la caja (crédito, transferencia o se registra en Finanzas)</option>
-                  {openSessions.map((x) => <option key={x.id} value={x.id}>Con el efectivo de la caja · {x.register} · {x.number}{x.site ? ` (${x.site})` : ''}</option>)}
-                </select>
-              </Field>
+              <PurchasePaymentField id="mpay" value={f} onChange={(v) => setF((x) => ({ ...x, ...v }))} total={purchaseTotal} sources={sources} supplierId={f.supplierId} />
             </div>
           )}
           {f.type === 'entrada' && <Field label="N.º de factura" htmlFor="mi"><input id="mi" value={f.invoice} onChange={set('invoice')} /></Field>}
