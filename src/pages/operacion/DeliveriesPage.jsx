@@ -19,6 +19,8 @@ const routeUrl = (origin, stops) => {
   if (list.length > 1) p.set('waypoints', list.slice(0, -1).join('|'))
   return `https://www.google.com/maps/dir/?${p.toString()}`
 }
+const PAY_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', nequi: 'Nequi', daviplata: 'Daviplata', tarjeta: 'Tarjeta', otro: 'Otro' }
+const payText = (d) => (!d.payMethod ? null : d.payMethod === 'efectivo' ? `💵 Paga en efectivo al domiciliario${d.cashWith ? ` con ${formatMoney(d.cashWith)} · llevar ${formatMoney(d.change || 0)} de cambio` : ''}` : `📲 Paga por ${PAY_LABEL[d.payMethod] || d.payMethod}${d.paid ? '' : d.mustPayFirst ? ' · cobrar antes de enviar' : ' · transfiere al llegar'}`)
 const shareLabel = (rule) => (rule.mode === 'todo' ? 'Todo el domicilio' : `${rule.percent} % del domicilio`)
 
 // ---------- Tarjeta de un domicilio ----------
@@ -37,6 +39,7 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
       </div>
       <a className="delivery-address" href={mapUrl(d.address, city)} target="_blank" rel="noreferrer"><MdPlace /> <span>{d.address}{city ? <small className="muted"> · {city}</small> : null}</span></a>
       {d.note && <small className="muted">📝 {d.note}</small>}
+      {payText(d) && <small className={d.mustPayFirst ? 'text-warn' : 'muted'}><b>{payText(d)}</b></small>}
       {d.items.length > 0 && <small className="muted delivery-items">{d.items.map((i) => `${i.quantity} ${i.name}`).join(' · ')}</small>}
       <div className="delivery-money">
         <div><span>{d.paid ? 'Pagado' : 'Cobrar al cliente'}</span><b className={d.paid ? '' : 'text-warn'}>{formatMoney(d.total)}</b></div>
@@ -54,7 +57,9 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
         <span className="grow" />
         {d.deliveryStatus !== 'por_despachar' && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAction(d, { status: d.deliveryStatus === 'entregado' ? 'en_camino' : 'por_despachar' })} disabled={busy} title="Deshacer"><MdUndo /></button>}
         <a href={mapUrl(d.address, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
-        {next && <button type="button" className="btn btn-sm btn-primary" onClick={() => onAction(d, { status: next.status })} disabled={busy}>{next.icon} {next.label}</button>}
+        {next && (next.status === 'en_camino' && d.mustPayFirst
+          ? <Link to={`/pedidos/${d.id}`} className="btn btn-sm" title="Se paga antes de enviar">Cobrar antes de enviar</Link>
+          : <button type="button" className="btn btn-sm btn-primary" onClick={() => onAction(d, { status: next.status })} disabled={busy}>{next.icon} {next.label}</button>)}
       </div>
     </li>
   )
@@ -231,7 +236,8 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
   const [couriers, setCouriers] = useState([])
   const [city, setCity] = useState('')
   const [busy, setBusy] = useState(false)
-  useEffect(() => { api.get('/domicilios').then(({ data }) => { setCouriers(data.couriers || []); setCity(data.origin?.city || '') }).catch(() => {}) }, [])
+  const [payFirst, setPayFirst] = useState(true)
+  useEffect(() => { api.get('/domicilios').then(({ data }) => { setCouriers(data.couriers || []); setCity(data.origin?.city || ''); setPayFirst(data.rule?.timing !== 'al_entregar') }).catch(() => {}) }, [])
   const st = order.deliveryStatus || 'por_despachar'
   const act = async (url, body, msg) => {
     setBusy(true)
@@ -250,9 +256,10 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
             {order.courier && !couriers.some((c) => c.id === order.courier.id) && <option value={order.courier.id}>{order.courier.name}</option>}
           </select></Field>
         ) : <span>Domiciliario: <strong>{order.courier?.name || 'sin asignar'}</strong></span>}
+        {order.deliveryPayMethod && <small className={order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst ? 'text-warn' : 'muted'}><b>{order.deliveryPayMethod === 'efectivo' ? `💵 Paga en efectivo al domiciliario${order.deliveryCashWith ? ` con ${formatMoney(order.deliveryCashWith)} · llevar ${formatMoney(Math.max(0, order.deliveryCashWith - order.total))} de cambio` : ''}` : `📲 Paga por ${PAY_LABEL[order.deliveryPayMethod]}${order.status !== 'abierto' ? '' : payFirst ? ' · cobrar antes de enviar' : ' · transfiere al llegar'}`}</b></small>}
         <div className="row wrap" style={{ gap: 8 }}>
           <a href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
-          {st === 'por_despachar' && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: 'en_camino' }, 'En camino')}><MdDirectionsBike /> Salió</button>}
+          {st === 'por_despachar' && !(order.deliveryPayMethod && order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst) && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: 'en_camino' }, 'En camino')}><MdDirectionsBike /> Salió</button>}
           {st === 'en_camino' && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: 'entregado' }, 'Entregado')}><MdCheckCircle /> Entregado</button>}
         </div>
       </div>

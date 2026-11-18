@@ -77,6 +77,12 @@ const SettingsPage = () => {
             <Field label="Valor sugerido del domicilio" htmlFor="dfd" hint="Se precarga al abrir y al cobrar un domicilio; el cajero lo puede cambiar o no cobrarlo. 0: sin valor sugerido.">
               <MoneyInput id="dfd" value={form.deliveryFeeDefault ?? 0} onChange={(v) => setForm((f) => ({ ...f, deliveryFeeDefault: v === '' ? 0 : v }))} />
             </Field>
+            <Field label="Si el cliente paga por transferencia, Nequi o tarjeta" htmlFor="dtt" hint="Al abrir el domicilio se pregunta cómo paga el cliente. En efectivo siempre le paga al domiciliario cuando llega.">
+              <div className="seg seg-wrap" id="dtt">
+                <button type="button" className={`btn btn-sm${(form.deliveryTransferTiming || 'antes') === 'antes' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, deliveryTransferTiming: 'antes' }))}>Se cobra antes de enviar</button>
+                <button type="button" className={`btn btn-sm${form.deliveryTransferTiming === 'al_entregar' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, deliveryTransferTiming: 'al_entregar' }))}>Paga cuando llega el pedido</button>
+              </div>
+            </Field>
             <Field label="¿Qué le toca al domiciliario?" htmlFor="csm" hint="Se le paga al cerrar la caja, junto con las propinas de sus entregas. Lo que no le toca queda como venta del negocio.">
               <div className="seg seg-wrap">
                 <button type="button" className={`btn btn-sm${(form.courierShareMode || 'todo') === 'todo' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, courierShareMode: 'todo' }))}>Todo el domicilio</button>

@@ -29,7 +29,7 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const suggestedFee = Number(order.deliveryFee) || Number(settings.deliveryFeeDefault) || 0
   const [feeOn, setFeeOn] = useState(isDelivery && suggestedFee > 0)
   const [feeValue, setFeeValue] = useState(suggestedFee || '')
-  const [pays, setPays] = useState([{ method: 'efectivo', amount: '', received: '', reference: '' }])
+  const [pays, setPays] = useState([{ method: (order.type === 'domicilio' && order.deliveryPayMethod) || 'efectivo', amount: '', received: (order.type === 'domicilio' && order.deliveryPayMethod === 'efectivo' && order.deliveryCashWith) || '', reference: '' }])
   const [cxc, setCxc] = useState({ customerName: order.customerName || '', customerDoc: '', customerPhone: order.customerPhone || '', dueDate: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
