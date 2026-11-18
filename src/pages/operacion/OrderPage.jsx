@@ -9,6 +9,7 @@ import { Badge, Card, Empty, Field, Modal, Spinner, useToast } from '../../compo
 import { formatDateTime, formatMoney } from '../../utils/format'
 import { AREA_LABEL, ITEM_STATUS, ITEM_TONE, ORDER_STATUS, ORDER_TONE, PAY_METHODS, Qty, since, useCan } from './common'
 import ChargeModal from './ChargeModal'
+import { orderTicket } from '../../utils/ticket'
 import { AliasModal, MoveModal } from './tableModals'
 
 // Motivo obligatorio para cortesías y anulaciones.
@@ -33,18 +34,25 @@ const ReasonModal = ({ title, label, placeholder, confirm, danger, onClose, onCo
   )
 }
 
-// Precuenta impresa (no es factura).
-const printBill = (o, settings) => {
-  const w = window.open('', '_blank', 'width=380,height=640')
-  if (!w) return
-  const rows = o.items.filter((i) => i.status !== 'anulado').map((i) => `<tr><td>${i.quantity} ${i.name}${i.courtesy ? ' (cortesía)' : ''}</td><td style="text-align:right">${i.courtesy ? '$0' : formatMoney(i.total)}</td></tr>`).join('')
-  const tip = Math.round((o.subtotal - o.discountTotal) * Number(settings.tipPercent ?? 10) / 100)
-  w.document.write(`<html><head><title>Precuenta ${o.number}</title><style>body{font-family:ui-monospace,monospace;font-size:12px;padding:10px;width:280px}h3,p{text-align:center;margin:4px 0}table{width:100%;border-collapse:collapse}td{padding:2px 0}hr{border:0;border-top:1px dashed #000}</style></head><body>
-<h3>${settings.businessName}</h3><p>PRECUENTA · ${o.number}</p><p>${o.table || o.typeLabel} · ${new Date().toLocaleString('es-CO')}</p><hr/><table>${rows}</table><hr/>
-<table><tr><td>Subtotal</td><td style="text-align:right">${formatMoney(o.subtotal)}</td></tr><tr><td>Propina sugerida (${settings.tipPercent ?? 10} %)</td><td style="text-align:right">${formatMoney(tip)}</td></tr>
-<tr><td><b>Total con propina</b></td><td style="text-align:right"><b>${formatMoney(o.subtotal + tip)}</b></td></tr></table><hr/><p>La propina es voluntaria.</p><p>Este documento no es una factura.</p>
-<script>window.onload=()=>{window.print()}<\/script></body></html>`)
-  w.document.close()
+// Precuenta: antes de imprimir se le pregunta al cliente si quiere incluir la propina.
+const TipAskModal = ({ o, settings, initial, onClose, onDone }) => {
+  const pct = Number(settings.tipPercent ?? 10)
+  const tipValue = Math.round((o.subtotal - o.discountTotal) * pct / 100)
+  const [want, setWant] = useState(Boolean(initial))
+  const print = () => { orderTicket({ o, settings, tip: want ? tipValue : 0, tipPct: pct }); onDone(want) }
+  return (
+    <Modal title={`Precuenta ${o.number}`} onClose={onClose}
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="button" className="btn btn-primary" onClick={print} autoFocus><MdPrint /> Imprimir precuenta</button></>}>
+      <div className="stack" style={{ gap: 12 }}>
+        <p className="muted" style={{ margin: 0 }}>Pregúntale al cliente si desea incluir la propina. Si no la quiere, no aparece en la precuenta ni se suma a la cuenta.</p>
+        <label className={`check-card${want ? ' on' : ''}`}>
+          <input type="checkbox" checked={want} onChange={(e) => setWant(e.target.checked)} />
+          <span><b>El cliente desea incluir la propina ({pct} %)</b><small>Se suma {formatMoney(tipValue)}: total {formatMoney(o.subtotal - o.discountTotal + tipValue)}</small></span>
+        </label>
+        <div className="row-between"><span>Total a pagar</span><strong className="money">{formatMoney(o.subtotal - o.discountTotal + (want ? tipValue : 0))}</strong></div>
+      </div>
+    </Modal>
+  )
 }
 
 // Pedido: agregar productos (con precio de promoción), enviar la comanda, cortesías, anulaciones y cobro.
@@ -62,6 +70,8 @@ const OrderPage = () => {
   const [cart, setCart] = useState([])
   const [sending, setSending] = useState(false)
   const [modal, setModal] = useState(null)
+  // Lo que respondió el cliente sobre la propina en la precuenta (se lleva al cobro).
+  const [tipWanted, setTipWanted] = useState(null)
   const [toast, toastNode] = useToast()
   const seller = can('mesero', 'cajero', 'host', 'bartender', 'barista')
   const cashier = can('cajero')
@@ -110,7 +120,7 @@ const OrderPage = () => {
           </div>
         </div>
         {open && <div className="row-end wrap">
-          <button type="button" className="btn btn-sm" onClick={() => printBill(o, settings)} disabled={!live.length}><MdPrint /> Precuenta</button>
+          <button type="button" className="btn btn-sm" onClick={() => setModal('bill')} disabled={!live.length}><MdPrint /> Precuenta</button>
           {o.type === 'mesa' && seller && <button type="button" className="btn btn-sm" onClick={() => setModal('move')}><MdSwapHoriz /> Trasladar</button>}
           {o.type === 'mesa' && seller && !o.alias && <button type="button" className="btn btn-sm" onClick={() => setModal('alias')}><MdLabel /> Alias</button>}
           <button type="button" className="btn btn-sm" onClick={() => act(() => api.post(`/pedidos/${o.id}/cuenta`, { cancel: Boolean(o.billRequestedAt) }), o.billRequestedAt ? 'Se quitó la solicitud de cuenta' : 'Cuenta pedida: la caja ya la ve')}><MdReceipt /> {o.billRequestedAt ? 'Quitar cuenta' : 'Pedir cuenta'}</button>
@@ -204,7 +214,8 @@ const OrderPage = () => {
         </div>
       </div>
 
-      {modal === 'charge' && <ChargeModal order={o} onClose={() => setModal(null)} onCharged={() => { setModal(null); navigate(o.type === 'mesa' ? '/mesas' : '/pedidos') }} />}
+      {modal === 'bill' && <TipAskModal o={o} settings={settings} initial={tipWanted} onClose={() => setModal(null)} onDone={(w) => { setTipWanted(w); setModal(null) }} />}
+      {modal === 'charge' && <ChargeModal order={o} tipWanted={tipWanted} onClose={() => setModal(null)} onCharged={() => { setModal(null); navigate(o.type === 'mesa' ? '/mesas' : '/pedidos') }} />}
       {modal === 'move' && <MoveModal order={o} fromName={o.table} onClose={() => setModal(null)} onMoved={(data, t) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(`Pedido trasladado a ${t.name}`) }} />}
       {modal === 'alias' && <AliasModal order={o} tableName={o.table || o.number} onClose={() => setModal(null)} onSaved={(data) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(data.alias ? `Alias: ${data.alias}` : 'Alias quitado') }} />}
       {modal === 'void' && <ReasonModal title={`Anular el pedido ${o.number}`} label="Motivo" placeholder="Ej. el cliente se fue sin consumir" confirm="Anular pedido" danger onClose={() => setModal(null)} onConfirm={(reason) => act(() => api.post(`/pedidos/${o.id}/anular`, { reason }), 'Pedido anulado: el inventario volvió a la bodega')} />}

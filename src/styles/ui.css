@@ -1421,3 +1421,71 @@ tr.voided td strong { text-decoration: line-through; font-weight: 500; }
 .legal-row > svg { font-size: 22px; color: var(--brand); flex: none; }
 .legal-row .grow { flex: 1; min-width: 200px; display: flex; flex-direction: column; }
 .legal-how { margin: 0 0 10px; padding-left: 18px; line-height: 1.7; color: var(--ink-2); }
+.session-anchor { scroll-margin-top: 80px; display: flex; flex-direction: column; gap: 10px; }
+.session-anchor > .section-title { margin: 8px 0 0; }
+.tip-box { border: 1px solid var(--line); border-radius: var(--radius-sm, 10px); padding: 10px; }
+/* Subcuentas */
+.fund-group + .fund-group { padding-top: 10px; border-top: 1px dashed var(--line); }
+.fund-card.sub { background: color-mix(in srgb, var(--brand) 4%, var(--surface)); border-style: dashed; }
+.fund-card.sub strong { font-size: 17px; }
+.fund-card.off { opacity: .6; }
+.fund-card.add { align-items: center; justify-content: center; flex-direction: row; color: var(--muted); border-style: dashed; font-weight: 600; min-height: 88px; }
+.fund-services { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+tr.sub-row td:first-child { padding-left: 24px; }
+.tip-bonus { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; border-radius: var(--radius-sm, 10px); background: color-mix(in srgb, var(--brand) 6%, var(--surface)); }
+.tip-bonus .check { flex: 1; min-width: 220px; }
+/* Ranking del personal por calificaciones */
+.staff-rank { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.staff-rank li { display: grid; grid-template-columns: 30px 1fr auto 34px; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm, 10px); }
+.staff-rank li.top { background: color-mix(in srgb, #F2A541 16%, var(--surface)); }
+.staff-rank .pos { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--gray-100); color: var(--ink-2); }
+.staff-rank li.top .pos { background: #F2A541; color: #1F2933; }
+.staff-rank .who { display: flex; flex-direction: column; min-width: 0; }
+.staff-rank .stars { color: #F2A541; letter-spacing: 1px; white-space: nowrap; }
+.staff-rank .stars em { color: var(--gray-300, #CBD2D9); font-style: normal; }
+.staff-rank b { text-align: right; }
+/* Carta configurable */
+.menu-hero.cover { background-size: cover; background-position: center; min-height: 190px; justify-content: flex-end; }
+.menu-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.menu-tags .menu-promo { margin-top: 0; }
+.menu-direct { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: #E8F5EE; color: #1E7A4A; }
+.menu-featured { padding: 6px 16px 0; }
+.menu-featured h2 { display: flex; align-items: center; gap: 6px; font-size: 18px; font-weight: 800; margin: 14px 0 8px; }
+.menu-featured h2 svg { color: var(--accent, #F2A541); }
+.menu-featured-row { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 46%); gap: 10px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x mandatory; }
+.menu-feat { scroll-snap-align: start; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+.menu-feat.sold { opacity: .55; }
+.menu-feat img, .menu-feat .ph { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; }
+.menu-feat .ph { display: grid; place-items: center; background: color-mix(in srgb, var(--brand) 12%, var(--surface)); color: var(--brand); font-size: 28px; }
+.menu-feat .menu-price { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+.menu-list.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.menu-list.grid li { flex-direction: column; align-items: stretch; }
+.menu-list.grid img { width: 100%; height: auto; aspect-ratio: 4 / 3; }
+.menu-list.grid .menu-price { flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.menu-note { text-align: center; color: var(--muted); font-size: 13px; padding: 4px 20px; }
+.menu-rate { margin: 10px 16px 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.menu-rate .stars { display: flex; gap: 4px; }
+.menu-rate .stars button { background: none; border: 0; padding: 2px; font-size: 30px; line-height: 1; color: var(--gray-300, #CBD2D9); cursor: pointer; }
+.menu-rate .stars button.on { color: #F2A541; }
+.menu-rate textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font: inherit; resize: vertical; }
+
+/* ---------- Módulo Carta (TD-004) ---------- */
+.carta-preview { display: grid; gap: 12px; }
+.carta-preview .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.carta-preview .toolbar select { max-width: 340px; }
+.carta-phone { max-width: 430px; width: 100%; margin: 0 auto; border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow, 0 8px 30px rgb(0 0 0 / .08)); max-height: 78vh; overflow-y: auto; background: var(--surface, #fff); }
+.carta-phone .menu-page { min-height: 0; }
+.carta-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.carta-grid small { display: flex; align-items: center; gap: 6px; }
+.carta-new { border: 2px dashed var(--line); border-radius: 14px; background: transparent; color: var(--muted); font: inherit; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 140px; cursor: pointer; }
+.carta-new:hover { border-color: var(--brand); color: var(--brand); }
+.carta-editor { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 860px) { .carta-editor { grid-template-columns: 1fr; } }
+.carta-sections, .carta-products { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 260px; overflow-y: auto; }
+.carta-sections li, .carta-products li { display: flex; align-items: center; gap: 8px; justify-content: space-between; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.carta-sections li.on { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 6%, transparent); }
+.carta-products li .grow { display: grid; flex: 1; min-width: 0; }
+.carta-products li.off { opacity: .55; }
+.carta-products .btn.on { border-color: var(--brand); color: var(--brand); }
+.qr-direct { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--brand) 6%, transparent); }

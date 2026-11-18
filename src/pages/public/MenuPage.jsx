@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { MdQrCodeScanner, MdRoomService, MdReceipt, MdSearch, MdCheckCircle, MdAdd, MdRemove, MdShoppingBag, MdClose, MdPerson, MdPeople, MdSchedule, MdPlace, MdHourglassTop } from 'react-icons/md'
+import { MdQrCodeScanner, MdRoomService, MdReceipt, MdCheckCircle, MdAdd, MdRemove, MdShoppingBag, MdClose, MdPerson, MdPeople, MdSchedule, MdPlace, MdHourglassTop, MdStar } from 'react-icons/md'
+import MenuView from '../../components/menu/MenuView'
 import api, { errorMessage } from '../../api/client'
 import { BrandLogo } from '../../components/Logo'
 import { Spinner } from '../../components/ui'
@@ -43,10 +44,30 @@ const CartSheet = ({ cart, products, mode, onQty, onClose, onSend, sending, erro
         <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={140} placeholder="Nota para la cocina o el bar (opcional)" aria-label="Nota" />
         {error && <div className="alert bad">{error}</div>}
         <button type="button" className="btn btn-primary btn-block menu-send" disabled={!lines.length || sending} onClick={() => onSend({ name, note, items: lines.map(({ p, q }) => ({ productId: p.id, quantity: q })) })}>
-          {sending ? <Spinner /> : <MdShoppingBag />} {mode === 'directo' ? 'Pedir' : 'Enviar al mesero'} · {formatMoney(total)}
+          {sending ? <Spinner /> : <MdShoppingBag />} {mode === 'directo' ? 'Pedir' : mode === 'mixto' ? 'Enviar pedido' : 'Enviar al mesero'} · {formatMoney(total)}
         </button>
-        <small className="muted" style={{ textAlign: 'center' }}>{mode === 'directo' ? 'Tu pedido va directo a la cocina y el bar, y se suma a tu cuenta.' : 'Tu mesero confirma el pedido y lo envía a la cocina y el bar.'}</small>
+        <small className="muted" style={{ textAlign: 'center' }}>{mode === 'directo' ? 'Tu pedido va directo a la cocina y el bar, y se suma a tu cuenta.' : mode === 'mixto' ? 'Lo marcado como "Directo" va de una vez a la cocina y el bar; lo demás lo confirma tu mesero.' : 'Tu mesero confirma el pedido y lo envía a la cocina y el bar.'}</small>
       </div>
+    </div>
+  )
+}
+
+// Calificación del servicio (1 a 5 estrellas y un comentario opcional).
+const RateBox = ({ rating, onSend, busy }) => {
+  const [stars, setStars] = useState(rating.stars || 0)
+  const [comment, setComment] = useState(rating.comment || '')
+  const [open, setOpen] = useState(!rating.stars)
+  if (!open) return <div className="menu-rate"><span>Calificaste el servicio con {'★'.repeat(rating.stars)} <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(true)}>Cambiar</button></span></div>
+  return (
+    <div className="menu-rate">
+      <strong>¿Cómo te atendimos?</strong>
+      <div className="stars" role="radiogroup" aria-label="Calificación del servicio">
+        {[1, 2, 3, 4, 5].map((n) => <button key={n} type="button" role="radio" aria-checked={stars === n} aria-label={`${n} estrella${n > 1 ? 's' : ''}`} className={n <= stars ? 'on' : ''} onClick={() => setStars(n)}>★</button>)}
+      </div>
+      {stars > 0 && <>
+        <textarea rows={2} maxLength={300} value={comment} onChange={(e) => setComment(e.target.value)} placeholder={stars >= 4 ? '¿Qué fue lo que más te gustó? (opcional)' : '¿Qué podemos mejorar? (opcional)'} aria-label="Comentario" />
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={async () => { if (await onSend({ stars, comment })) setOpen(false) }}>{busy ? <Spinner /> : <MdStar />} Enviar calificación</button>
+      </>}
     </div>
   )
 }
@@ -57,8 +78,6 @@ const MenuPage = () => {
   const { token } = useParams()
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
-  const [cat, setCat] = useState('all')
-  const [q, setQ] = useState('')
   const [sent, setSent] = useState('')
   const [busy, setBusy] = useState('')
   const [cart, setCart] = useState(() => loadCart(token))
@@ -98,10 +117,10 @@ const MenuPage = () => {
     try { const { data: r } = await api.post(`/carta/${token}/pedido`, body, opts()); setCart({}); setSheet(false); setSent(r.message); load(); window.scrollTo({ top: 0, behavior: 'smooth' }) } catch (e) { if (!onFail(e)) setSendError(errorMessage(e)) }
     setBusy('')
   }
-  const products = useMemo(() => {
-    const f = q.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    return (data?.products || []).filter((p) => (cat === 'all' || p.categoryId === Number(cat)) && (!f || p.name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(f)))
-  }, [data, cat, q])
+  const rate = async (body) => {
+    setBusy('rate')
+    try { const { data: r } = await api.post(`/carta/${token}/calificar`, body, opts()); setSent(r.message); load(); setBusy(''); return true } catch (e) { if (!onFail(e)) setSent(errorMessage(e)); setBusy(''); return false }
+  }
 
   if (expired) {
     const b = data?.business || {}
@@ -120,92 +139,51 @@ const MenuPage = () => {
   if (!data) return <div className="splash"><Spinner /></div>
   const b = data.business || {}
   const style = { '--brand': b.primary, '--menu-dark': b.secondary, '--accent': b.accent, fontFamily: b.font ? `'${b.font}', system-ui, sans-serif` : undefined }
-  const cats = data.categories.filter((c) => products.some((p) => p.categoryId === c.id))
   const canOrder = data.canOrder && !data.pendingOrder
   const count = Object.values(cart).reduce((a, n) => a + n, 0)
   const cartTotal = Object.entries(cart).reduce((a, [id, n]) => a + n * (data.products.find((p) => p.id === Number(id))?.finalPrice || 0), 0)
   const o = data.order
+  const actions = data.actions || { callWaiter: true, requestBill: true }
   return (
     <div className={`menu-page${canOrder && count ? ' has-cart' : ''}`} style={style}>
-      <header className="menu-hero">
-        {b.logoUrl ? <img src={b.logoUrl} alt={b.name} className="menu-logo" /> : <BrandLogo size={34} onDark />}
-        <h1>{b.name}</h1>
-        {b.slogan && <p>{b.slogan}</p>}
-        <span className="menu-table">{data.table.name}</span>
-      </header>
-
-      <section className="menu-info" aria-label="Tu mesa">
-        {data.table.area && <span><MdPlace /> {data.table.area}{data.table.site ? ` · ${data.table.site}` : ''}</span>}
-        {!data.table.area && data.table.site && <span><MdPlace /> {data.table.site}</span>}
-        <span><MdPeople /> {o?.guests ? `${o.guests} de ${data.table.seats} puestos` : `${data.table.seats} puestos`}</span>
-        {o?.waiter && <span><MdPerson /> Te atiende {o.waiter}</span>}
-        {o?.openedAt && <span><MdSchedule /> En la mesa hace {since(o.openedAt)}</span>}
-      </section>
-
-      <div className="menu-actions">
-        <button type="button" className="btn btn-primary" onClick={() => call('mesero')} disabled={Boolean(busy) || data.calls.includes('mesero')}>{busy === 'mesero' ? <Spinner /> : <MdRoomService />} {data.calls.includes('mesero') ? 'Mesero en camino' : 'Llamar al mesero'}</button>
-        <button type="button" className="btn" onClick={() => call('cuenta')} disabled={Boolean(busy) || data.calls.includes('cuenta') || !o}>{busy === 'cuenta' ? <Spinner /> : <MdReceipt />} {data.calls.includes('cuenta') ? 'Cuenta pedida' : 'Pedir la cuenta'}</button>
-      </div>
-      {sent && <div className="menu-sent" role="status"><MdCheckCircle /> {sent}</div>}
-      {data.pendingOrder && (
-        <div className="menu-pending" role="status">
-          <MdHourglassTop />
-          <div><strong>Tu pedido está esperando al mesero</strong><small>{data.pendingOrder.items.map((i) => `${i.quantity} × ${i.name}`).join(', ')} · {formatMoney(data.pendingOrder.total)}</small></div>
-        </div>
-      )}
-
-      {o && o.items.length > 0 && (
-        <details className="menu-bill" open={o.items.some((i) => i.status === 'pendiente' || i.status === 'preparando')}>
-          <summary>Tu cuenta · {formatMoney(o.total)}</summary>
-          <ul>{o.items.map((i, n) => (
-            <li key={n}>
-              <span>{i.quantity} × {i.name}{i.courtesy ? ' 🎁' : ''} {ITEM_STATUS[i.status] && i.status !== 'entregado' && <em className={`menu-st ${i.status}`}>{ITEM_STATUS[i.status]}</em>}</span>
-              <span>{i.courtesy ? 'Cortesía' : formatMoney(i.quantity * i.price)}</span>
-            </li>
-          ))}</ul>
-          <small>Pedido {o.number}. La propina es voluntaria.</small>
-        </details>
-      )}
-
-      <div className="menu-filters">
-        <div className="input-icon"><MdSearch /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en la carta" aria-label="Buscar en la carta" /></div>
-        <div className="chip-list scroll-x">
-          <button type="button" className={`pchip${cat === 'all' ? ' on' : ''}`} onClick={() => setCat('all')}>Todo</button>
-          {data.categories.map((c) => <button key={c.id} type="button" className={`pchip${cat === String(c.id) ? ' on' : ''}`} onClick={() => setCat(String(c.id))}>{c.emoji} {c.name}</button>)}
-        </div>
-      </div>
-
-      {cats.map((c) => (
-        <section key={c.id} className="menu-section">
-          <h2>{c.emoji} {c.name}</h2>
-          {c.description && <p className="muted">{c.description}</p>}
-          <ul className="menu-list">{products.filter((p) => p.categoryId === c.id).map((p) => {
-            const n = cart[p.id] || 0
-            return (
-              <li key={p.id} className={p.soldOut ? 'sold' : ''}>
-                {p.photoUrl && <img src={p.photoUrl} alt="" loading="lazy" />}
-                <div className="grow">
-                  <strong>{p.name}</strong>
-                  {p.description && <small>{p.description}</small>}
-                  {p.promo && <span className="menu-promo" style={{ background: p.promo.color }}>{p.promo.emoji} {p.promo.tag || p.promo.name}</span>}
-                </div>
-                <div className="menu-price">
-                  {p.soldOut ? <span className="badge muted">Agotado</span> : p.promo ? <><s>{formatMoney(p.price)}</s><b>{formatMoney(p.finalPrice)}</b></> : <b>{formatMoney(p.price)}</b>}
-                  {canOrder && !p.soldOut && (n ? (
-                    <div className="qty-step sm">
-                      <button type="button" onClick={() => setQty(p.id, n - 1)} aria-label={`Quitar un ${p.name}`}><MdRemove /></button>
-                      <b>{n}</b>
-                      <button type="button" onClick={() => setQty(p.id, n + 1)} aria-label={`Agregar otro ${p.name}`} disabled={n >= 20}><MdAdd /></button>
-                    </div>
-                  ) : <button type="button" className="menu-add" onClick={() => setQty(p.id, 1)} aria-label={`Agregar ${p.name}`}><MdAdd /> Agregar</button>)}
-                </div>
-              </li>
-            )
-          })}</ul>
-        </section>
-      ))}
-      {!cats.length && <p className="muted" style={{ textAlign: 'center' }}>No hay productos con ese filtro.</p>}
-      <footer className="menu-foot">Hecho con TillDash+</footer>
+      <MenuView data={data} cart={cart} setQty={setQty} canOrder={canOrder} showDirect={data.ordering === 'mixto'}
+        header={<span className="menu-table">{data.table.name}</span>}
+        top={<>
+          <section className="menu-info" aria-label="Tu mesa">
+            {data.table.area && <span><MdPlace /> {data.table.area}{data.table.site ? ` · ${data.table.site}` : ''}</span>}
+            {!data.table.area && data.table.site && <span><MdPlace /> {data.table.site}</span>}
+            <span><MdPeople /> {o?.guests ? `${o.guests} de ${data.table.seats} puestos` : `${data.table.seats} puestos`}</span>
+            {o?.waiter && <span><MdPerson /> Te atiende {o.waiter}</span>}
+            {o?.openedAt && <span><MdSchedule /> En la mesa hace {since(o.openedAt)}</span>}
+          </section>
+          {(actions.callWaiter || actions.requestBill) && (
+            <div className="menu-actions">
+              {actions.callWaiter && <button type="button" className="btn btn-primary" onClick={() => call('mesero')} disabled={Boolean(busy) || data.calls.includes('mesero')}>{busy === 'mesero' ? <Spinner /> : <MdRoomService />} {data.calls.includes('mesero') ? 'Mesero en camino' : 'Llamar al mesero'}</button>}
+              {actions.requestBill && <button type="button" className="btn" onClick={() => call('cuenta')} disabled={Boolean(busy) || data.calls.includes('cuenta') || !o}>{busy === 'cuenta' ? <Spinner /> : <MdReceipt />} {data.calls.includes('cuenta') ? 'Cuenta pedida' : 'Pedir la cuenta'}</button>}
+            </div>
+          )}
+          {sent && <div className="menu-sent" role="status"><MdCheckCircle /> {sent}</div>}
+          {data.pendingOrder && (
+            <div className="menu-pending" role="status">
+              <MdHourglassTop />
+              <div><strong>Tu pedido está esperando al mesero</strong><small>{data.pendingOrder.items.map((i) => `${i.quantity} × ${i.name}`).join(', ')} · {formatMoney(data.pendingOrder.total)}</small></div>
+            </div>
+          )}
+          {o && o.items.length > 0 && (
+            <details className="menu-bill" open={o.items.some((i) => i.status === 'pendiente' || i.status === 'preparando')}>
+              <summary>Tu cuenta · {formatMoney(o.total)}</summary>
+              <ul>{o.items.map((i, n) => (
+                <li key={n}>
+                  <span>{i.quantity} × {i.name}{i.courtesy ? ' 🎁' : ''} {ITEM_STATUS[i.status] && i.status !== 'entregado' && <em className={`menu-st ${i.status}`}>{ITEM_STATUS[i.status]}</em>}</span>
+                  <span>{i.courtesy ? 'Cortesía' : formatMoney(i.quantity * i.price)}</span>
+                </li>
+              ))}</ul>
+              <small>Pedido {o.number}. La propina es voluntaria.</small>
+            </details>
+          )}
+          {data.rating?.canRate && <RateBox key={data.rating.stars || 0} rating={data.rating} onSend={rate} busy={busy === 'rate'} />}
+        </>}
+      />
 
       {canOrder && count > 0 && (
         <button type="button" className="menu-cart-bar" onClick={() => { setSendError(''); setSheet(true) }}>

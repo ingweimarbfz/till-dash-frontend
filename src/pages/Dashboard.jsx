@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart } from 'react-icons/md'
+import { MdRoomService, MdReceipt, MdSoupKitchen, MdLockOpen, MdRequestQuote, MdLocalAtm, MdPeople, MdBadge, MdPlace, MdWarehouse, MdTimeline, MdRestaurantMenu, MdWarningAmber, MdRemoveShoppingCart, MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdAttachMoney, MdInventory, MdNotificationsActive, MdMenuBook, MdQrCode2, MdTimer, MdAccountBalance, MdPanTool, MdReportProblem, MdTrendingDown, MdCheckCircle, MdHourglassTop, MdShoppingCart, MdStar, MdEmojiEvents } from 'react-icons/md'
 import api, { errorMessage } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
@@ -95,6 +95,20 @@ const Dashboard = () => {
                   ))}</ol>
                 </div>
               </div>
+            )}
+          </Card>
+        )}
+        {data.staffRanking && (
+          <Card title="Mejor servicio" subtitle={data.staffRanking.count ? `Calificaciones de los clientes por QR · últimos 30 días · promedio ${data.staffRanking.avg} ★ (${data.staffRanking.count})` : 'Calificaciones de los clientes por QR · últimos 30 días'} icon={<MdStar />}>
+            {!data.staffRanking.rows.length ? <Empty icon={<MdStar />}>Cuando los clientes califiquen el servicio desde el QR de su mesa, verás aquí al mejor empleado.</Empty> : (
+              <ol className="staff-rank">{data.staffRanking.rows.map((x, i) => (
+                <li key={x.id} className={i === 0 ? 'top' : ''}>
+                  <span className="pos">{i === 0 ? <MdEmojiEvents /> : i + 1}</span>
+                  <span className="who"><strong>{x.name}</strong><small>{x.count} calificaciones · {x.five} de 5 ★</small></span>
+                  <span className="stars" aria-label={`${x.avg} de 5 estrellas`}>{'★'.repeat(Math.round(x.avg))}<em>{'★'.repeat(5 - Math.round(x.avg))}</em></span>
+                  <b>{String(x.avg).replace('.', ',')}</b>
+                </li>
+              ))}</ol>
             )}
           </Card>
         )}

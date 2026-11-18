@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong
@@ -99,12 +99,29 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
   const picked = Object.keys(tips).map(Number)
   const shown = staff ? staff.employees.filter((x) => showAll || x.served || picked.includes(x.id)) : []
   const toggle = (id) => setTips((t) => { const n = { ...t }; if (id in n) delete n[id]; else n[id] = ''; return n })
-  const split = () => {
-    const ids = picked.length ? picked : staff.employees.filter((x) => x.served).map((x) => x.id)
+  // Reparto: en grupo (partes iguales, con bonificación opcional al mejor calificado) o individual (lo de sus mesas).
+  const [mode, setMode] = useState('individual')
+  const [bonusOn, setBonusOn] = useState(false)
+  const [bonusPct, setBonusPct] = useState('20')
+  const score = (x) => (x.rating ? x.rating.avg * 100 + x.rating.count : x.ratingMonth ? x.ratingMonth.avg * 100 - 1000 + x.ratingMonth.count : -1e9)
+  const groupIds = () => (picked.length ? picked : staff.employees.filter((x) => x.served).map((x) => x.id))
+  const best = staff && mode === 'grupo' ? staff.employees.filter((x) => groupIds().includes(x.id) && (x.rating || x.ratingMonth)).sort((a, b) => score(b) - score(a))[0] || null : null
+  const split = (opts = {}) => {
+    const ids = groupIds()
     if (!ids.length) return
-    const each = Math.floor(summary.tips / ids.length)
-    setTips(Object.fromEntries(ids.map((id, i) => [id, i === 0 ? summary.tips - each * (ids.length - 1) : each])))
+    const on = opts.bonusOn ?? bonusOn
+    const pctV = Math.max(0, Math.min(200, Number(String(opts.bonusPct ?? bonusPct).replace(',', '.')) || 0))
+    const top = on && ids.length > 1 ? (opts.best ?? best) : null
+    const w = ids.map((id) => (top && id === top.id ? 1 + pctV / 100 : 1))
+    const sumW = w.reduce((a, x) => a + x, 0)
+    const parts = ids.map((id, i) => Math.floor(summary.tips * w[i] / sumW))
+    const rest = summary.tips - parts.reduce((a, x) => a + x, 0)
+    const iTop = top ? ids.indexOf(top.id) : 0
+    parts[iTop >= 0 ? iTop : 0] += rest
+    setTips(Object.fromEntries(ids.map((id, i) => [id, parts[i]])))
   }
+  const toGroup = () => { setMode('grupo'); setTimeout(() => split(), 0) }
+  const toIndividual = () => { setMode('individual'); setBonusOn(false); setTips(Object.fromEntries(staff.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested]))) }
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (cnt === null) return setError('Cuenta el efectivo y escribe el total.')
@@ -137,15 +154,24 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
         <section className="close-step">
           <h4><span>2</span> Propinas <small className="muted">· {formatMoney(summary.tips)} en el turno</small></h4>
           {!staff ? <Spinner /> : <>
-            <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-              <button type="button" className="btn btn-sm" onClick={split} disabled={!summary.tips}>Repartir en partes iguales</button>
-              {staff.total > 0 && <button type="button" className="btn btn-sm" onClick={() => setTips(Object.fromEntries(staff.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested])))}>Según sus mesas</button>}
+            <div className="seg seg-wrap">
+              <button type="button" className={`btn btn-sm${mode === 'individual' ? ' on' : ''}`} onClick={toIndividual}>Individual · según sus mesas</button>
+              <button type="button" className={`btn btn-sm${mode === 'grupo' ? ' on' : ''}`} onClick={toGroup} disabled={!summary.tips}>En grupo · partes iguales</button>
               {Object.keys(tips).length > 0 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setTips({})}>Ninguna</button>}
             </div>
+            {mode === 'grupo' && (
+              <div className="tip-bonus">
+                <label className="check"><input type="checkbox" checked={bonusOn} disabled={!best} onChange={(e) => { setBonusOn(e.target.checked); split({ bonusOn: e.target.checked }) }} />
+                  <span><strong>Dar más propina al mejor calificado</strong><small className="block muted">{best ? `${best.name} · ${(best.rating || best.ratingMonth).avg} ★ (${(best.rating || best.ratingMonth).count} calificaciones${best.rating ? ' en el turno' : ' en 30 días'})` : 'Aún no hay calificaciones del personal elegido.'}</small></span>
+                </label>
+                {bonusOn && best && <div className="input-prefix" style={{ width: 120 }}><span>+%</span><input inputMode="decimal" value={bonusPct} onChange={(e) => { setBonusPct(e.target.value); split({ bonusPct: e.target.value }) }} aria-label="Porcentaje adicional" /></div>}
+                <button type="button" className="btn btn-sm" onClick={() => split()}>Recalcular</button>
+              </div>
+            )}
             <ul className="tip-list">
               {shown.map((x) => (
                 <li key={x.id} className={x.id in tips ? 'on' : ''}>
-                  <label className="check"><input type="checkbox" checked={x.id in tips} onChange={() => toggle(x.id)} /> <span><strong>{x.name}</strong><small className="block muted">{x.positions.length ? x.positions.join(', ') : x.role}{x.suggested > 0 ? ` · ${formatMoney(x.suggested)} de sus mesas` : ''}</small></span></label>
+                  <label className="check"><input type="checkbox" checked={x.id in tips} onChange={() => toggle(x.id)} /> <span><strong>{x.name}</strong>{best?.id === x.id && bonusOn && <Badge tone="brand">+{bonusPct} %</Badge>}<small className="block muted">{x.positions.length ? x.positions.join(', ') : x.role}{x.suggested > 0 ? ` · ${formatMoney(x.suggested)} de sus mesas` : ''}{(x.rating || x.ratingMonth) ? ` · ${(x.rating || x.ratingMonth).avg} ★` : ''}</small></span></label>
                   {x.id in tips && <MoneyInput id={`tip-${x.id}`} value={tips[x.id]} onChange={(v) => setTips((t) => ({ ...t, [x.id]: v }))} aria-label={`Propina para ${x.name}`} />}
                 </li>
               ))}
@@ -181,8 +207,10 @@ const SessionView = ({ id, canClose, onChanged }) => {
   const [s, setS] = useState(null)
   const [modal, setModal] = useState(null)
   const [toast, toastNode] = useToast()
-  const load = useCallback(() => api.get(`/caja/turnos/${id}`, { params: { sede: undefined } }).then(({ data }) => setS(data)).catch(() => {}), [id])
+  const [loadError, setLoadError] = useState('')
+  const load = useCallback(() => api.get(`/caja/turnos/${id}`, { params: { sede: undefined } }).then(({ data }) => { setS(data); setLoadError('') }).catch((e) => setLoadError(errorMessage(e))), [id])
   useEffect(() => { load() }, [load])
+  if (loadError && !s) return <div className="alert bad">No se pudo abrir el turno: {loadError} <button type="button" className="btn btn-sm" onClick={load}>Reintentar</button></div>
   if (!s) return <div className="splash" style={{ minHeight: 160 }}><Spinner /></div>
   const m = s.summary
   const open = s.status === 'abierta'
@@ -328,6 +356,9 @@ const CashPage = () => {
   const [modal, setModal] = useState(null)
   const [name, setName] = useState('')
   const [toast, toastNode] = useToast()
+  // "Ver turno" lleva al detalle del turno (movimientos, cobros y cierre), que va debajo de las cajas.
+  const sessionRef = useRef(null)
+  const showSession = () => setTimeout(() => sessionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
   const load = useCallback(() => api.get('/caja/cajas').then(({ data }) => {
     setRegisters(data)
     setCurrent((c) => c || data.find((r) => r.session && r.session.openedById === user.id)?.session || data.find((r) => r.session)?.session || null)
@@ -348,12 +379,19 @@ const CashPage = () => {
             <div><strong>{r.name}</strong><small className="block muted">{r.site}</small></div>
             {r.session ? <>
               <small>{r.session.number} · {r.session.openedBy} · {since(r.session.openedAt)}</small>
-              <button type="button" className="btn btn-sm" onClick={() => setCurrent(r.session)}>Ver turno</button>
+              {current && r.session.id === current.id
+                ? <button type="button" className="btn btn-sm btn-primary" onClick={showSession}>Viendo este turno ↓</button>
+                : <button type="button" className="btn btn-sm" onClick={() => { setCurrent(r.session); showSession() }}>Ver turno</button>}
             </> : <button type="button" className="btn btn-sm btn-primary" onClick={() => setModal({ open: r })}><MdLockOpen /> Abrir turno</button>}
           </div>
         ))}</div>
         {!registers.length && <Card><Empty icon={<MdPointOfSale />}>No hay cajas en esta sucursal.</Empty></Card>}
-        {current && <SessionView key={current.id} id={current.id} canClose onChanged={load} />}
+        {current && (
+          <div ref={sessionRef} className="session-anchor">
+            <h3 className="section-title">Turno {current.number} · {current.register}</h3>
+            <SessionView key={current.id} id={current.id} canClose onChanged={load} />
+          </div>
+        )}
       </>)}
       {tab === 'historial' && (current && current.fromHistory ? <><button type="button" className="btn btn-ghost btn-sm" onClick={() => setCurrent(null)}>← Volver al historial</button><SessionView key={current.id} id={current.id} canClose={false} onChanged={load} /></> : <HistoryTab onPick={(s) => setCurrent({ ...s, fromHistory: true })} />)}
       {tab === 'boveda' && admin && <VaultTab />}

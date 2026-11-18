@@ -6,7 +6,8 @@ import {
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Kpi, Modal, PageHead, Spinner, Field, useToast } from '../../components/ui'
 import { MoneyInput, Tabs } from '../../components/forms'
-import { Ranking, Share } from '../../components/charts'
+import { Bars, Ranking, Share } from '../../components/charts'
+import { useAuth } from '../../context/AuthContext'
 import { formatDate, formatDateTime, formatMoney } from '../../utils/format'
 import { bogota, PRESETS, download } from '../../utils/range'
 
@@ -33,13 +34,24 @@ const useRange = (initial = 'mes') => {
 }
 
 // ---------- Modales ----------
-const FundSelect = ({ id, funds, value, onChange, label = 'Fondo', hint }) => (
-  <Field label={label} htmlFor={id} hint={hint}>
-    <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
-      {funds.map((f) => <option key={f.key} value={f.key}>{f.name} · {formatMoney(f.balance)}</option>)}
-    </select>
-  </Field>
-)
+// Cuentas: el fondo principal (general o de cada sucursal) y sus subcuentas, agrupadas.
+const fundLabel = (f) => (f.kind === 'subcuenta' ? `${f.name} (${f.parent})` : f.name)
+const principals = (funds) => funds.filter((f) => f.kind !== 'subcuenta')
+const FundSelect = ({ id, funds, value, onChange, label = 'Fondo', hint }) => {
+  const groups = principals(funds).map((p) => ({ p, subs: funds.filter((x) => x.kind === 'subcuenta' && x.parentKey === p.key && x.active) }))
+  return (
+    <Field label={label} htmlFor={id} hint={hint}>
+      <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
+        {groups.map(({ p, subs }) => (subs.length ? (
+          <optgroup key={p.key} label={p.name}>
+            {funds.some((x) => x.key === p.key) && <option value={p.key}>{p.name} · cuenta principal · {formatMoney(p.balance)}</option>}
+            {subs.map((x) => <option key={x.key} value={x.key}>↳ {x.name} · {formatMoney(x.balance)}</option>)}
+          </optgroup>
+        ) : <option key={p.key} value={p.key}>{p.name} · {formatMoney(p.balance)}</option>))}
+      </select>
+    </Field>
+  )
+}
 
 const EntryModal = ({ funds, partners, initialFund = 'general', kinds, methods, onClose, onDone }) => {
   const [f, setF] = useState({ fund: initialFund, kind: 'capital', partnerId: '', amount: '', method: 'efectivo', receivedOn: bogota(), description: '' })
@@ -75,24 +87,24 @@ const EntryModal = ({ funds, partners, initialFund = 'general', kinds, methods, 
   )
 }
 
-const TransferModal = ({ funds, onClose, onDone }) => {
-  const [f, setF] = useState({ from: 'general', to: funds.find((x) => x.siteId)?.key || '', amount: '', note: '' })
+const TransferModal = ({ funds, initial = {}, onClose, onDone }) => {
+  const [f, setF] = useState({ from: initial.from || 'general', to: initial.to || funds.find((x) => x.key !== (initial.from || 'general') && x.active !== false)?.key || '', amount: '', note: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? v.target.value : v }))
   const src = funds.find((x) => x.key === f.from)
   const submit = async (e) => {
     e.preventDefault(); setError(''); setSaving(true)
     try {
-      await api.post('/finanzas/traslados', { fromSiteId: f.from === 'general' ? null : Number(f.from), toSiteId: f.to === 'general' ? null : Number(f.to), amount: f.amount, note: f.note }, { params: NO_SITE })
+      await api.post('/finanzas/traslados', { from: f.from, to: f.to, amount: f.amount, note: f.note }, { params: NO_SITE })
       onDone()
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
   return (
-    <Modal title="Trasladar entre fondos" onClose={onClose}
+    <Modal title="Trasladar dinero" onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="tr-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdSwapHoriz />} Trasladar</button></>}>
       <form id="tr-form" className="form-grid" onSubmit={submit} noValidate>
         <FundSelect id="tf" funds={funds} value={f.from} onChange={set('from')} label="Sale de" />
-        <FundSelect id="tt" funds={funds.filter((x) => x.key !== f.from)} value={f.to} onChange={set('to')} label="Entra a" />
+        <FundSelect id="tt" funds={funds.filter((x) => x.key !== f.from && x.active !== false)} value={f.to} onChange={set('to')} label="Entra a" />
         <Field label="Valor" htmlFor="ta" required hint={src ? `Disponible ${formatMoney(src.balance)}` : null}><MoneyInput id="ta" value={f.amount} onChange={set('amount')} autoFocus /></Field>
         <Field label="Nota" htmlFor="tn"><input id="tn" value={f.note} onChange={set('note')} placeholder="Ej. base del fin de semana" /></Field>
         {error && <div className="alert bad span-2">{error}</div>}
@@ -101,8 +113,9 @@ const TransferModal = ({ funds, onClose, onDone }) => {
   )
 }
 
-const ExpenseModal = ({ funds, partners, categories, sources, onClose, onDone }) => {
-  const [f, setF] = useState({ category: '', description: '', supplier: '', invoiceRef: '', amount: '', paidOn: bogota(), source: 'fondo', fund: 'general', sessionId: '', partnerId: '' })
+const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onClose, onDone }) => {
+  const [f, setF] = useState({ category: '', description: '', supplier: '', invoiceRef: '', amount: '', paidOn: bogota(), source: 'fondo', fund: 'general', sessionId: '', partnerId: '', ...initial })
+  const sub = funds.find((x) => x.key === f.fund && x.kind === 'subcuenta')
   const [sessions, setSessions] = useState([])
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? v.target.value : v }))
@@ -110,7 +123,7 @@ const ExpenseModal = ({ funds, partners, categories, sources, onClose, onDone })
   const submit = async (e) => {
     e.preventDefault(); setError(''); setSaving(true)
     try {
-      const { data } = await api.post('/finanzas/gastos', { ...f, siteId: f.fund === 'general' ? null : Number(f.fund) }, { params: NO_SITE })
+      const { data } = await api.post('/finanzas/gastos', { ...f, siteId: f.fund === 'general' || sub ? null : Number(f.fund) }, { params: NO_SITE })
       onDone(data)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
@@ -130,7 +143,7 @@ const ExpenseModal = ({ funds, partners, categories, sources, onClose, onDone })
           <div className="chip-list" style={{ marginTop: 6 }}>{Object.entries(sources).map(([k, l]) => <button key={k} type="button" className={`pchip${f.source === k ? ' on' : ''}`} onClick={() => set('source')(k)}>{l}</button>)}</div>
         </div>
         {(f.source === 'fondo' || f.source === 'banco' || f.source === 'socio') && (
-          <FundSelect id="xf" funds={funds} value={f.fund} onChange={set('fund')} label={f.source === 'fondo' ? 'Sale del fondo' : 'Gasto de'} hint={f.source === 'fondo' ? null : 'General o de una sucursal (para los reportes)'} />
+          <FundSelect id="xf" funds={f.source === 'fondo' ? funds.filter((x) => x.active !== false) : principals(funds)} value={f.source !== 'fondo' && sub ? sub.parentKey : f.fund} onChange={set('fund')} label={f.source === 'fondo' ? 'Sale de' : 'Gasto de'} hint={f.source === 'fondo' ? 'Cuenta principal o una subcuenta' : 'General o de una sucursal (para los reportes)'} />
         )}
         {f.source === 'caja' && (
           <Field label="Turno de caja abierto" htmlFor="xt" required hint={sessions.length ? 'Sale en efectivo de esa caja' : 'No hay cajas abiertas'}>
@@ -141,6 +154,12 @@ const ExpenseModal = ({ funds, partners, categories, sources, onClose, onDone })
           <Field label="Socio que lo pagó" htmlFor="xso" required hint="Queda como aporte del socio">
             <select id="xso" value={f.partnerId} onChange={set('partnerId')}><option value="">Elige el socio</option>{partners.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
           </Field>
+        )}
+        {sub?.services?.length > 0 && f.source === 'fondo' && (
+          <div className="span-2">
+            <span className="label-sm">Servicios de {sub.name}</span>
+            <div className="chip-list" style={{ marginTop: 6 }}>{sub.services.map((sv) => <button key={sv.name} type="button" className={`pchip${f.description === sv.name ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, description: sv.name, category: sv.category }))}>{sv.name}</button>)}</div>
+          </div>
         )}
         {f.category === 'compras' && <small className="muted span-2">Las compras de inventario no restan dos veces: la utilidad ya descuenta el costo de lo vendido.</small>}
         {error && <div className="alert bad span-2">{error}</div>}
@@ -285,31 +304,147 @@ const Summary = ({ range, onPay }) => {
   )
 }
 
-const Funds = ({ data, fundKey, setFund, onEntry, onTransfer }) => (
-  <div className="stack">
-    <div className="fund-grid">
-      {data.funds.map((f) => (
-        <button key={f.key} type="button" className={`fund-card${f.key === fundKey ? ' on' : ''}`} onClick={() => setFund(f.key)}>
-          <span className="fund-name">{f.siteId ? <MdPointOfSale /> : <MdAccountBalance />} {f.name}</span>
-          <strong className="money">{formatMoney(f.balance)}</strong>
-          <small className="muted">{f.siteId ? (f.inRegisters ? `Más ${formatMoney(f.inRegisters)} guardados en sus cajas` : 'Fondo para abrir sus cajas') : 'Dinero del negocio'}</small>
-        </button>
-      ))}
+const FundCard = ({ f, on, onClick }) => (
+  <button type="button" className={`fund-card${f.kind === 'subcuenta' ? ' sub' : ''}${on ? ' on' : ''}${f.active === false ? ' off' : ''}`} onClick={onClick}>
+    <span className="fund-name">{f.kind === 'subcuenta' ? <MdSavings /> : f.siteId ? <MdPointOfSale /> : <MdAccountBalance />} {f.name}</span>
+    <strong className="money">{formatMoney(f.balance)}</strong>
+    <small className="muted">{f.kind === 'subcuenta' ? (f.active === false ? 'Inactiva' : f.purpose || `Subcuenta de ${f.parent}`) : f.siteId ? (f.inRegisters ? `Más ${formatMoney(f.inRegisters)} guardados en sus cajas` : 'Cuenta principal · base de sus cajas') : 'Cuenta principal del negocio'}</small>
+  </button>
+)
+
+const Funds = ({ data, fundKey, setFund, owner, onEntry, onTransfer, onNewSub, onEditSub, onPayService }) => {
+  const f = data.fund
+  const isSub = f.kind === 'subcuenta'
+  return (
+    <div className="stack">
+      {principals(data.funds).map((p) => {
+        const subs = data.funds.filter((x) => x.kind === 'subcuenta' && x.parentKey === p.key)
+        return (
+          <div key={p.key} className="fund-group">
+            <div className="fund-grid">
+              <FundCard f={p} on={p.key === fundKey} onClick={() => setFund(p.key)} />
+              {subs.map((x) => <FundCard key={x.key} f={x} on={x.key === fundKey} onClick={() => setFund(x.key)} />)}
+              {owner && <button type="button" className="fund-card add" onClick={() => onNewSub(p.key)}><MdAdd /> Subcuenta en {p.name}</button>}
+            </div>
+          </div>
+        )
+      })}
+      <Card title={`Movimientos · ${isSub ? `${f.name} (${f.parent})` : f.name}`} subtitle={`Saldo ${formatMoney(f.balance)}${isSub && f.purpose ? ` · ${f.purpose}` : ''}`} flush
+        actions={<div className="card-actions">
+          {isSub && owner && <button type="button" className="btn btn-sm" onClick={() => onEditSub(f)}><MdEdit /> Editar</button>}
+          <button type="button" className="btn btn-sm" onClick={() => onTransfer(isSub ? { from: f.parentKey, to: f.key } : { from: f.key })}><MdSwapHoriz /> {isSub ? 'Recargar' : 'Trasladar'}</button>
+          {isSub
+            ? <button type="button" className="btn btn-sm btn-primary" onClick={() => onPayService(f)} disabled={f.active === false}><MdReceiptLong /> Pagar servicio</button>
+            : <button type="button" className="btn btn-sm btn-primary" onClick={() => onEntry(f.key)}><MdAdd /> Ingresar dinero</button>}
+        </div>}>
+        {isSub && f.services?.length > 0 && <div className="fund-services">{f.services.map((sv) => <button key={sv.name} type="button" className="pchip" onClick={() => onPayService(f, sv)}>{sv.name}</button>)}</div>}
+        {!data.movements.length ? <Empty icon={<MdAccountBalance />}>{isSub ? 'Recarga esta subcuenta desde su cuenta principal y paga desde aquí sus servicios.' : f.siteId ? 'Ingresa dinero a esta sucursal o trasládalo desde el fondo general. De aquí sale la base para abrir sus cajas.' : 'Ingresa el dinero del negocio: capital, aportes de socios o préstamos.'}</Empty> : (
+          <div className="table-wrap"><table className="table">
+            <thead><tr><th>Fecha</th><th>Movimiento</th><th>Concepto</th><th>Usuario</th><th className="num">Valor</th><th className="num">Saldo</th></tr></thead>
+            <tbody>{data.movements.map((m) => (
+              <tr key={m.id}><td><small>{formatDateTime(m.createdAt)}</small></td><td>{m.typeLabel}{m.ref && <small className="muted"> · {m.ref}</small>}</td><td>{m.note}</td><td><small>{m.user}</small></td>
+                <td className={`num money${m.amount < 0 ? ' neg' : ' pos'}`}>{signed(m.amount)}</td><td className="num money">{formatMoney(m.balanceAfter)}</td></tr>
+            ))}</tbody>
+          </table></div>
+        )}
+      </Card>
     </div>
-    <Card title={`Movimientos · ${data.fund.name}`} subtitle={`Saldo ${formatMoney(data.fund.balance)}`} flush
-      actions={<div className="card-actions"><button type="button" className="btn btn-sm" onClick={onTransfer}><MdSwapHoriz /> Trasladar</button><button type="button" className="btn btn-sm btn-primary" onClick={() => onEntry(data.fund.key)}><MdAdd /> Ingresar dinero</button></div>}>
-      {!data.movements.length ? <Empty icon={<MdAccountBalance />}>{data.fund.siteId ? 'Ingresa dinero a esta sucursal o trasládalo desde el fondo general. De aquí sale la base para abrir sus cajas.' : 'Ingresa el dinero del negocio: capital, aportes de socios o préstamos.'}</Empty> : (
-        <div className="table-wrap"><table className="table">
-          <thead><tr><th>Fecha</th><th>Movimiento</th><th>Concepto</th><th>Usuario</th><th className="num">Valor</th><th className="num">Saldo</th></tr></thead>
-          <tbody>{data.movements.map((m) => (
-            <tr key={m.id}><td><small>{formatDateTime(m.createdAt)}</small></td><td>{m.typeLabel}{m.ref && <small className="muted"> · {m.ref}</small>}</td><td>{m.note}</td><td><small>{m.user}</small></td>
-              <td className={`num money${m.amount < 0 ? ' neg' : ' pos'}`}>{signed(m.amount)}</td><td className="num money">{formatMoney(m.balanceAfter)}</td></tr>
+  )
+}
+
+// Subcuenta: nombre, a qué fondo pertenece, para qué es, servicios que paga y saldo inicial (sale de su cuenta principal).
+const SubaccountModal = ({ funds, sub, categories, onClose, onDone }) => {
+  const editing = Boolean(sub?.vaultId)
+  const [f, setF] = useState({ name: sub?.name || '', siteId: sub?.parentKey || 'general', purpose: sub?.purpose || '', initialAmount: '', active: sub?.active ?? true, services: sub?.services?.length ? sub.services : [{ name: '', category: 'servicios' }] })
+  const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? (v.target.type === 'checkbox' ? v.target.checked : v.target.value) : v }))
+  const setSv = (n, k) => (e) => setF((x) => ({ ...x, services: x.services.map((sv, j) => (j === n ? { ...sv, [k]: e.target.value } : sv)) }))
+  const parent = funds.find((x) => x.key === f.siteId)
+  const submit = async (e) => {
+    e.preventDefault(); setError(''); setSaving(true)
+    const body = { ...f, siteId: f.siteId === 'general' ? null : Number(f.siteId), services: f.services.filter((sv) => sv.name.trim()) }
+    try {
+      if (editing) { await api.put(`/finanzas/subcuentas/${sub.vaultId}`, body, { params: NO_SITE }); onDone('Subcuenta guardada') } else {
+        const { data } = await api.post('/finanzas/subcuentas', body, { params: NO_SITE })
+        onDone(data.warning || `Subcuenta ${f.name} creada`, data.key)
+      }
+    } catch (err) { setError(errorMessage(err)); setSaving(false) }
+  }
+  return (
+    <Modal title={editing ? `Subcuenta ${sub.name}` : 'Nueva subcuenta'} size="lg" onClose={onClose}
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="sub-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdSavings />} Guardar</button></>}>
+      <form id="sub-form" className="form-grid" onSubmit={submit} noValidate>
+        <Field label="Nombre" htmlFor="sbn" required><input id="sbn" value={f.name} onChange={set('name')} placeholder="Ej. Caja menor, Servicios, Publicidad" autoFocus /></Field>
+        {editing ? <Field label="Pertenece a"><input value={sub.parent} disabled /></Field> : (
+          <Field label="Pertenece a" htmlFor="sbs" hint="Su dinero sale de esta cuenta principal"><select id="sbs" value={f.siteId} onChange={set('siteId')}>{principals(funds).map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}</select></Field>
+        )}
+        <div className="span-2"><Field label="¿Para qué es?" htmlFor="sbp"><input id="sbp" value={f.purpose} onChange={set('purpose')} placeholder="Ej. pagos de servicios públicos y mantenimientos" /></Field></div>
+        {!editing && <Field label="Saldo inicial" htmlFor="sbi" hint={parent ? `Se traslada desde ${parent.name} (disponible ${formatMoney(parent.balance)})` : null}><MoneyInput id="sbi" value={f.initialAmount} onChange={set('initialAmount')} /></Field>}
+        {editing && <label className="check" style={{ alignSelf: 'end' }}><input type="checkbox" checked={f.active} onChange={set('active')} /> Activa</label>}
+        <div className="span-2 stack" style={{ gap: 8 }}>
+          <span className="label-sm">Servicios que se pagan desde aquí</span>
+          {f.services.map((sv, n) => (
+            <div key={n} className="row" style={{ gap: 8 }}>
+              <input value={sv.name} onChange={setSv(n, 'name')} placeholder="Ej. Energía (luz), Mantenimiento de aires" aria-label="Servicio" style={{ flex: 2 }} />
+              <select value={sv.category} onChange={setSv(n, 'category')} aria-label="Categoría" style={{ flex: 1 }}>{Object.entries(categories).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+              <button type="button" className="btn btn-ghost btn-icon" aria-label="Quitar servicio" onClick={() => setF((x) => ({ ...x, services: x.services.filter((_, j) => j !== n) }))}><MdBlock /></button>
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setF((x) => ({ ...x, services: [...x.services, { name: '', category: 'servicios' }] }))}><MdAdd /> Servicio</button>
+        </div>
+        {error && <div className="alert bad span-2">{error}</div>}
+      </form>
+    </Modal>
+  )
+}
+
+// Tablero de cuentas: saldos, entradas y salidas, en qué se gasta cada subcuenta y gasto por mes.
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+const Accounts = ({ range, rangeNode, version, onPick }) => {
+  const [r, setR] = useState(null); const [error, setError] = useState('')
+  useEffect(() => { api.get('/finanzas/cuentas', { params: { desde: range.from, hasta: range.to, ...NO_SITE } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [range, version])
+  if (error) return <div className="alert bad">{error}</div>
+  if (!r) return <div className="stack">{rangeNode}<div className="splash" style={{ minHeight: 200 }}><Spinner /></div></div>
+  const subs = r.accounts.filter((a) => a.kind === 'subcuenta')
+  const monthly = r.months.map((m) => ({ label: `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(2, 4)}`, value: r.accounts.reduce((s, a) => s + (a.monthly.find((x) => x.month === m)?.total || 0), 0) }))
+  return (
+    <div className="stack">
+      {rangeNode}
+      <div className="kpis">
+        <Kpi label="Dinero en cuentas" value={formatMoney(r.totals.balance)} icon={MdAccountBalance} tone="dark" note={`${r.accounts.length} cuentas`} />
+        <Kpi label="En subcuentas" value={formatMoney(r.totals.subaccounts)} icon={MdSavings} note={`${subs.length} subcuentas`} />
+        <Kpi label="Pagado desde cuentas" value={formatMoney(r.totals.spent)} icon={MdTrendingDown} tone="brand" note="En el rango" />
+        <Kpi label="Entradas a cuentas" value={formatMoney(r.totals.inflow)} icon={MdTrendingUp} note="Ingresos, traslados y cierres" />
+      </div>
+      <div className="grid grid-2">
+        <Card title="Gasto por mes" subtitle="Pagos desde cuentas y subcuentas, últimos 6 meses"><Bars data={monthly} ariaLabel="Gasto por mes" /></Card>
+        <Card title="¿En qué se va el dinero?" subtitle="Pagos por categoría en el rango">{r.byCategory.length ? <Share rows={r.byCategory} value="total" label="label" /> : <small className="muted">Sin pagos en este rango.</small>}</Card>
+      </div>
+      <Card title="Cuentas y subcuentas" subtitle="Toca una para ver sus movimientos" flush>
+        <div className="table-wrap"><table className="table hover">
+          <thead><tr><th>Cuenta</th><th className="num">Saldo</th><th className="num hide-sm">Entró</th><th className="num hide-sm">Salió</th><th className="num">Pagos</th><th className="hide-md">Principal gasto</th></tr></thead>
+          <tbody>{r.accounts.map((a) => (
+            <tr key={a.key} onClick={() => onPick(a.key)} style={{ cursor: 'pointer' }} className={a.kind === 'subcuenta' ? 'sub-row' : ''}>
+              <td>{a.kind === 'subcuenta' ? <>↳ <strong>{a.name}</strong> <small className="muted">{a.parent}</small></> : <strong>{a.name}</strong>}{a.active === false && <Badge tone="muted">Inactiva</Badge>}</td>
+              <td className="num money">{formatMoney(a.balance)}</td>
+              <td className="num money hide-sm pos">{a.inflow ? `+${formatMoney(a.inflow)}` : '—'}</td>
+              <td className="num money hide-sm neg">{a.outflow ? `−${formatMoney(a.outflow)}` : '—'}</td>
+              <td className="num money">{formatMoney(a.spent)}</td>
+              <td className="hide-md"><small>{a.byService[0] ? `${a.byService[0].label} · ${formatMoney(a.byService[0].total)}` : '—'}</small></td>
+            </tr>
           ))}</tbody>
         </table></div>
+      </Card>
+      {subs.some((a) => a.byService.length) && (
+        <div className="grid grid-3">
+          {subs.filter((a) => a.byService.length).map((a) => (
+            <Card key={a.key} title={a.name} subtitle={`${a.parent} · saldo ${formatMoney(a.balance)}`}><Ranking rows={a.byService} value="total" label="label" limit={6} /></Card>
+          ))}
+        </div>
       )}
-    </Card>
-  </div>
-)
+    </div>
+  )
+}
 
 const Expenses = ({ range, rangeNode, version, onNew, onVoid }) => {
   const [r, setR] = useState(null); const [cat, setCat] = useState(''); const [q, setQ] = useState(''); const [error, setError] = useState('')
@@ -429,6 +564,8 @@ const FinancePage = () => {
   const [version, setVersion] = useState(0)
   const [error, setError] = useState('')
   const [toast, toastNode] = useToast()
+  const { user } = useAuth()
+  const owner = user.role === 'superadmin'
 
   const loadFunds = useCallback(() => api.get('/finanzas/fondos', { params: { fondo: fundKey, ...NO_SITE } }).then(({ data }) => setFunds(data)).catch((e) => setError(errorMessage(e))), [fundKey])
   const loadPartners = useCallback(() => api.get('/finanzas/socios', { params: NO_SITE }).then(({ data }) => setPartners(data)).catch((e) => setError(errorMessage(e))), [])
@@ -453,22 +590,26 @@ const FinancePage = () => {
           )}
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['fondos', 'Fondos'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos de dinero'], ['socios', 'Socios']]} />
+      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['fondos', 'Fondos y subcuentas'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos de dinero'], ['socios', 'Socios']]} />
       {error && <div className="alert bad">{error}</div>}
       {!ready ? <div className="splash" style={{ minHeight: 240 }}><Spinner /></div> : (
         <>
           {tab === 'resumen' && <div className="stack">{rangeNode}<Summary range={range} key={version} onPay={(initial) => setModal({ type: 'pay', initial })} /></div>}
-          {tab === 'fondos' && <Funds data={funds} fundKey={fundKey} setFund={setFund} onEntry={(fund) => setModal({ type: 'entry', fund })} onTransfer={() => setModal({ type: 'transfer' })} />}
+          {tab === 'cuentas' && <Accounts range={range} rangeNode={rangeNode} version={version} onPick={(k) => { setFund(k); setTab('fondos') }} />}
+          {tab === 'fondos' && <Funds data={funds} fundKey={fundKey} setFund={setFund} owner={owner} onEntry={(fund) => setModal({ type: 'entry', fund })} onTransfer={(initial) => setModal({ type: 'transfer', initial })}
+            onNewSub={(parentKey) => setModal({ type: 'sub', sub: { parentKey } })} onEditSub={(sub) => setModal({ type: 'sub', sub })}
+            onPayService={(sub, sv) => setModal({ type: 'expense', initial: { source: 'fondo', fund: sub.key, ...(sv ? { description: sv.name, category: sv.category } : {}) } })} />}
           {tab === 'gastos' && <Expenses range={range} rangeNode={rangeNode} version={version} onNew={() => setModal({ type: 'expense' })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
           {tab === 'ingresos' && <Entries range={range} rangeNode={rangeNode} version={version} onNew={(fund) => setModal({ type: 'entry', fund })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
           {tab === 'socios' && <Partners data={partners} onNew={() => setModal({ type: 'partner' })} onEdit={(p) => setModal({ type: 'partner', partner: p })} onPay={(initial) => setModal({ type: 'pay', initial })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
         </>
       )}
-      {modal?.type === 'entry' && <EntryModal funds={funds.funds} partners={partners.rows} initialFund={modal.fund} kinds={funds.entryKinds} methods={funds.methods} onClose={() => setModal(null)} onDone={(d) => refresh(`Ingreso ${d.number} registrado`)} />}
-      {modal?.type === 'transfer' && <TransferModal funds={funds.funds} onClose={() => setModal(null)} onDone={() => refresh('Traslado registrado')} />}
-      {modal?.type === 'expense' && <ExpenseModal funds={funds.funds} partners={partners.rows} categories={meta.categories} sources={meta.sources} onClose={() => setModal(null)} onDone={(d) => refresh(`Gasto ${d.number} registrado`)} />}
+      {modal?.type === 'entry' && <EntryModal funds={principals(funds.funds)} partners={partners.rows} initialFund={funds.funds.find((x) => x.key === modal.fund)?.kind === 'subcuenta' ? funds.funds.find((x) => x.key === modal.fund).parentKey : modal.fund} kinds={funds.entryKinds} methods={funds.methods} onClose={() => setModal(null)} onDone={(d) => refresh(`Ingreso ${d.number} registrado`)} />}
+      {modal?.type === 'transfer' && <TransferModal funds={funds.funds} initial={modal.initial} onClose={() => setModal(null)} onDone={() => refresh('Traslado registrado')} />}
+      {modal?.type === 'expense' && <ExpenseModal funds={funds.funds} partners={partners.rows} categories={meta.categories} sources={meta.sources} initial={modal.initial} onClose={() => setModal(null)} onDone={(d) => refresh(`Gasto ${d.number} registrado`)} />}
       {modal?.type === 'partner' && <PartnerModal partner={modal.partner} onClose={() => setModal(null)} onDone={() => refresh('Socio guardado')} />}
-      {modal?.type === 'pay' && <WithdrawalModal funds={funds.funds} partners={partners.rows} kinds={partners.withdrawalKinds} methods={funds.methods} initial={modal.initial} onClose={() => setModal(null)} onDone={() => refresh('Pago registrado')} />}
+      {modal?.type === 'pay' && <WithdrawalModal funds={principals(funds.funds)} partners={partners.rows} kinds={partners.withdrawalKinds} methods={funds.methods} initial={modal.initial} onClose={() => setModal(null)} onDone={() => refresh('Pago registrado')} />}
+      {modal?.type === 'sub' && <SubaccountModal funds={funds.funds} sub={modal.sub} categories={meta.categories} onClose={() => setModal(null)} onDone={(msg, key) => { if (key) setFund(key); refresh(msg) }} />}
       {modal?.type === 'void' && <VoidModal doc={modal.doc} onClose={() => setModal(null)} onDone={() => refresh(`${modal.doc.number} anulado`)} />}
       {toastNode}
     </div>

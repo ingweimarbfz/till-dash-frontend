@@ -7,12 +7,6 @@ import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
 import { Card, Field, PageHead, Spinner, useToast } from '../components/ui'
 
-// Qué puede hacer el cliente al escanear el QR de la mesa.
-const QR_MODES = [
-  ['llamar', 'Solo llamar al mesero', 'Ve la carta y su cuenta, llama al mesero o pide la cuenta. Los pedidos los toma el mesero.'],
-  ['confirmar', 'Pedir con confirmación', 'El cliente arma su pedido en la carta y el mesero lo acepta antes de que llegue a cocina y bar.'],
-  ['directo', 'Pedir directo', 'El pedido entra a la cuenta de la mesa y a las comandas al instante. El personal recibe el aviso.']
-]
 const TYPES = [['restaurante', 'Restaurante'], ['bar', 'Bar'], ['social_bar', 'Social bar'], ['discoteca', 'Discoteca'], ['market', 'Market'], ['cafeteria', 'Cafetería'], ['otro', 'Otro']]
 
 // Configuración general del establecimiento (superadmin y admin). La apariencia es solo del superadmin.
@@ -73,15 +67,10 @@ const SettingsPage = () => {
               <MoneyInput id="cel" value={form.cashExpenseLimit} onChange={(v) => setForm((f) => ({ ...f, cashExpenseLimit: v === '' ? 0 : v }))} />
             </Field>
           </Card>
-          <Card title="Carta por QR" icon={<MdQrCode2 />} subtitle="Lo que puede hacer el cliente al escanear el código de su mesa.">
-            <div className="stack" style={{ gap: 8 }} role="radiogroup" aria-label="Pedidos desde el QR">
-              {QR_MODES.map(([k, l, d]) => (
-                <label key={k} className={`check-card${form.qrOrdering === k ? ' on' : ''}`}>
-                  <input type="radio" name="qrOrdering" value={k} checked={form.qrOrdering === k} onChange={set('qrOrdering')} />
-                  <span><b>{l}</b><small>{d}</small></span>
-                </label>
-              ))}
-              <small className="muted">Sin un turno de caja abierto en la sucursal, el cliente solo puede llamar al mesero.</small>
+          <Card title="Carta y QR" icon={<MdQrCode2 />} subtitle="Las cartas por horario y lo que puede hacer el cliente al escanear el QR (varias opciones a la vez).">
+            <div className="stack" style={{ gap: 8 }}>
+              <Link to="/carta?tab=qr" className="btn btn-block">Opciones del QR <MdChevronRight /></Link>
+              <Link to="/carta?tab=cartas" className="btn btn-block">Armar cartas <MdChevronRight /></Link>
             </div>
           </Card>
           {user.role === 'superadmin' && (

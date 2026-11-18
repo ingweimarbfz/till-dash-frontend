@@ -5,7 +5,9 @@ import api, { errorMessage } from '../../api/client'
 import { useSettings } from '../../context/SettingsContext'
 import { Empty, Field, Modal, Spinner } from '../../components/ui'
 
-export const menuUrl = (token) => `${window.location.origin}/carta/${token}`
+// El QR lleva la dirección pública de la app (VITE_PUBLIC_APP_URL): así funciona aunque el sistema se use desde localhost.
+export const PUBLIC_APP_URL = (import.meta.env.VITE_PUBLIC_APP_URL || 'https://till-dash.vercel.app').replace(/\/$/, '')
+export const menuUrl = (token) => `${PUBLIC_APP_URL}/carta/${token}`
 export const ALIAS_MAX = 40
 const ALIAS_IDEAS = ['Chica de rojo', 'Solo hombres', 'Cumpleaños', 'Pareja', 'Ejecutivos']
 
@@ -106,7 +108,7 @@ export const QrModal = ({ table, admin, onClose, onRegenerated }) => {
   const url = menuUrl(table.qrToken)
   useEffect(() => { QRCode.toDataURL(url, { width: 640, margin: 1, color: { dark: '#1F2933', light: '#FFFFFF' } }).then(setSrc).catch(() => setSrc('')) }, [url])
   const print = () => {
-    const w = window.open('', '_blank', 'width=480,height=640')
+    const w = window.open('', '_blank', 'width=560,height=860')
     if (!w) return
     w.document.write(`<html><head><title>${table.name}</title><style>body{font-family:system-ui,sans-serif;text-align:center;padding:24px}img{width:300px}h1{margin:8px 0 2px}p{margin:4px 0;color:#555}</style></head><body><h2>${settings.businessName}</h2><img src="${src}" alt="QR"/><h1>${table.name}</h1><p>Escanea para ver la carta y llamar al mesero</p><script>window.onload=()=>{window.print()}<\/script></body></html>`)
     w.document.close()

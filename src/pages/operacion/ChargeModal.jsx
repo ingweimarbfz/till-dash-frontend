@@ -1,17 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdAdd, MdDelete, MdPointOfSale, MdWarningAmber } from 'react-icons/md'
+import { MdAdd, MdDelete, MdPointOfSale, MdWarningAmber, MdPrint } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useSettings } from '../../context/SettingsContext'
 import { Field, Modal, Spinner } from '../../components/ui'
 import { MoneyInput } from '../../components/forms'
 import { formatMoney } from '../../utils/format'
 import { PAY_METHODS } from './common'
+import { orderTicket } from '../../utils/ticket'
 
 const round = (v) => Math.round(Number(v) || 0)
 
 // Cobro de un pedido: descuento, propina sugerida, una o varias formas de pago y cuenta por cobrar.
-const ChargeModal = ({ order, onClose, onCharged }) => {
+const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const { settings } = useSettings()
   const tipPct = Number(settings.tipPercent ?? 10)
   const [discounts, setDiscounts] = useState([])
@@ -19,7 +20,9 @@ const ChargeModal = ({ order, onClose, onCharged }) => {
   const [sessionId, setSessionId] = useState('')
   const [discountId, setDiscountId] = useState('')
   const [reason, setReason] = useState('')
-  const [tipMode, setTipMode] = useState(settings.tipSuggested === false ? 'none' : 'pct')
+  // La propina solo se suma si el cliente la acepta (casilla). Por defecto, lo que dijo en la precuenta.
+  const [tipOn, setTipOn] = useState(Boolean(tipWanted))
+  const [tipMode, setTipMode] = useState('pct')
   const [tipCustom, setTipCustom] = useState('')
   const [pays, setPays] = useState([{ method: 'efectivo', amount: '', received: '', reference: '' }])
   const [cxc, setCxc] = useState({ customerName: order.customerName || '', customerDoc: '', customerPhone: order.customerPhone || '', dueDate: '' })
@@ -38,7 +41,7 @@ const ChargeModal = ({ order, onClose, onCharged }) => {
   const disc = discounts.find((d) => d.id === Number(discountId))
   const discountTotal = !disc ? 0 : disc.type === 'porcentaje' ? round(order.subtotal * disc.value / 100) : Math.min(round(disc.value), order.subtotal)
   const base = order.subtotal - discountTotal
-  const tip = tipMode === 'pct' ? round(base * tipPct / 100) : tipMode === 'custom' ? round(tipCustom) : 0
+  const tip = !tipOn ? 0 : tipMode === 'pct' ? round(base * tipPct / 100) : round(tipCustom)
   const total = base + tip
   const paid = pays.reduce((a, p) => a + round(p.amount), 0)
   const left = total - paid
@@ -66,14 +69,14 @@ const ChargeModal = ({ order, onClose, onCharged }) => {
         payments: pays.map((p) => ({ method: p.method, amount: round(p.amount), received: p.method === 'efectivo' && p.received !== '' ? round(p.received) : undefined, reference: p.reference })),
         receivable: hasCxc ? cxc : undefined
       })
-      setDone(data)
+      setDone({ ...data, tip, discount: discountTotal, total, payments: pays.map((p) => ({ label: PAY_METHODS[p.method] || p.method, amount: round(p.amount) })) })
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
 
   if (done) {
     return (
       <Modal title={`Pedido ${done.number} cobrado`} onClose={() => onCharged(done)}
-        footer={<button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button>}>
+        footer={<><button type="button" className="btn" onClick={() => orderTicket({ o: order, settings, kind: 'cuenta', tip: done.tip, tipPct: tipMode === 'pct' ? tipPct : null, discount: done.discount, total: done.total, payments: done.payments })}><MdPrint /> Imprimir tiquete</button><button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button></>}>
         <div className="charge-done">
           <span className="charge-ok"><MdPointOfSale /></span>
           <strong>{formatMoney(done.total)}</strong>
@@ -95,14 +98,19 @@ const ChargeModal = ({ order, onClose, onCharged }) => {
             <Field label="Descuento" htmlFor="cd"><select id="cd" value={discountId} onChange={(e) => setDiscountId(e.target.value)}><option value="">Sin descuento</option>{discounts.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type === 'porcentaje' ? `${d.value} %` : formatMoney(d.value)})</option>)}</select></Field>
             {disc ? <Field label="Motivo" htmlFor="cr" required={disc.requiresReason}><input id="cr" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={disc.description || ''} /></Field> : <span />}
           </div>
-          <Field label="Propina">
-            <div className="seg seg-wrap">
-              <button type="button" className={`btn btn-sm${tipMode === 'pct' ? ' on' : ''}`} onClick={() => setTipMode('pct')}>Sugerida {tipPct} %</button>
-              <button type="button" className={`btn btn-sm${tipMode === 'none' ? ' on' : ''}`} onClick={() => setTipMode('none')}>Sin propina</button>
-              <button type="button" className={`btn btn-sm${tipMode === 'custom' ? ' on' : ''}`} onClick={() => setTipMode('custom')}>Otro valor</button>
-              {tipMode === 'custom' && <div style={{ width: 150 }}><MoneyInput value={tipCustom} onChange={setTipCustom} aria-label="Valor de la propina" /></div>}
-            </div>
-          </Field>
+          <div className="tip-box">
+            <label className={`check-card${tipOn ? ' on' : ''}`}>
+              <input type="checkbox" checked={tipOn} onChange={(e) => setTipOn(e.target.checked)} />
+              <span><b>El cliente desea incluir la propina</b><small>{tipOn ? 'Se suma a la cuenta.' : 'Pregúntale al cliente. Sin marcar, la propina no se cobra ni aparece en la cuenta.'}</small></span>
+            </label>
+            {tipOn && (
+              <div className="seg seg-wrap" style={{ marginTop: 8 }}>
+                <button type="button" className={`btn btn-sm${tipMode === 'pct' ? ' on' : ''}`} onClick={() => setTipMode('pct')}>Sugerida {tipPct} % · {formatMoney(round(base * tipPct / 100))}</button>
+                <button type="button" className={`btn btn-sm${tipMode === 'custom' ? ' on' : ''}`} onClick={() => setTipMode('custom')}>Otro valor</button>
+                {tipMode === 'custom' && <div style={{ width: 150 }}><MoneyInput value={tipCustom} onChange={setTipCustom} aria-label="Valor de la propina" /></div>}
+              </div>
+            )}
+          </div>
           <div className="stack" style={{ gap: 8 }}>
             <strong className="label-sm">Formas de pago</strong>
             {pays.map((p, n) => (
@@ -136,7 +144,7 @@ const ChargeModal = ({ order, onClose, onCharged }) => {
             <div><dt>Consumo</dt><dd>{formatMoney(order.gross)}</dd></div>
             {order.courtesyTotal > 0 && <div><dt>Cortesías</dt><dd>−{formatMoney(order.courtesyTotal)}</dd></div>}
             {discountTotal > 0 && <div><dt>Descuento</dt><dd>−{formatMoney(discountTotal)}</dd></div>}
-            <div><dt>Propina</dt><dd>{formatMoney(tip)}</dd></div>
+            {tip > 0 && <div><dt>Propina</dt><dd>{formatMoney(tip)}</dd></div>}
             <div className="total"><dt>Total</dt><dd>{formatMoney(total)}</dd></div>
             <div className={left === 0 ? 'ok' : 'bad'}><dt>{left >= 0 ? 'Por asignar' : 'Sobra'}</dt><dd>{formatMoney(Math.abs(left))}</dd></div>
             {change > 0 && <div className="change"><dt>Cambio</dt><dd>{formatMoney(change)}</dd></div>}
