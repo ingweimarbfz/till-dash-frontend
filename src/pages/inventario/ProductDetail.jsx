@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { MdArrowBack, MdRestaurantMenu, MdWarehouse, MdSchedule, MdImageNotSupported, MdEdit, MdMoveToInbox, MdSwapVert } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
@@ -82,7 +82,7 @@ const ProductDetail = () => {
             </>}
           </div>
           {p.description && <div className="pdp-desc"><h3>Descripción</h3><p>{p.description}</p></div>}
-          {admin && <dl className="stat-list"><div><dt>Costo</dt><dd className="money">{formatMoney(p.cost)}</dd></div><div><dt>Margen</dt><dd>{p.finalPrice ? `${Math.round(((p.finalPrice - p.cost) / p.finalPrice) * 100)} %` : '—'}</dd></div></dl>}
+          {admin && <dl className="stat-list"><div><dt>Costo</dt><dd className="money">{formatMoney(p.cost)}</dd></div><div><dt>Margen</dt><dd>{p.finalPrice ? `${Math.round(((p.finalPrice - p.cost) / p.finalPrice) * 100)} %` : '—'}</dd></div><div><dt>Proveedor</dt><dd>{p.supplier ? <Link to="/proveedores">{p.supplier}</Link> : '—'}</dd></div></dl>}
         </div>
       </div>
       <div className="grid grid-2">

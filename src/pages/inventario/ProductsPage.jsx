@@ -9,6 +9,7 @@ import { formatMoney } from '../../utils/format'
 import { PromoTag, PromoPrice } from './promotions'
 import { AREAS, fmtQty, MovementModal, UNITS, useWarehouses, WarehouseOptions } from './common'
 import { notifyStock } from '../../components/StockAlerts'
+import SupplierField from '../../components/SupplierField'
 
 const ADMIN = ['superadmin', 'admin']
 
@@ -56,6 +57,7 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
         <Field label="Unidad de medida" htmlFor="pu"><select id="pu" value={form.unit} onChange={set('unit')}>{Object.entries(UNITS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field label="Precio de venta" htmlFor="ppr" required hint={margin !== null ? `Margen ${margin} %` : null}><MoneyInput id="ppr" value={form.price} onChange={set('price')} /></Field>
         <Field label="Costo" htmlFor="pco" hint="Se actualiza con cada entrada"><MoneyInput id="pco" value={form.cost} onChange={set('cost')} /></Field>
+        <div className="span-2"><SupplierField id="psup" label="Proveedor habitual" value={form} onChange={(v) => setForm((x) => ({ ...x, supplierId: v.supplierId }))} hint="Se propone al registrar sus entradas de inventario" /></div>
         <div className="span-2"><label className="check"><input type="checkbox" checked={form.trackStock} onChange={set('trackStock')} /> Maneja inventario (desmárcalo para platos que se preparan al momento)</label></div>
         {form.trackStock && <Field label="Stock mínimo por bodega" htmlFor="pmin" hint="Al llegar aquí avisa con un toast y por Telegram"><input id="pmin" type="number" step="any" min="0" value={form.minStock} onChange={set('minStock')} /></Field>}
         {form.trackStock && !editing && <Field label="Stock inicial" htmlFor="pini"><input id="pini" type="number" step="any" min="0" value={form.initialStock} onChange={set('initialStock')} /></Field>}

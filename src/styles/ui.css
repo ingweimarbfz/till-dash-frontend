@@ -1489,3 +1489,13 @@ tr.sub-row td:first-child { padding-left: 24px; }
 .carta-products li.off { opacity: .55; }
 .carta-products .btn.on { border-color: var(--brand); color: var(--brand); }
 .qr-direct { display: grid; gap: 8px; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--brand) 6%, transparent); }
+
+/* ---------- Proveedores (TD-005) ---------- */
+.supplier-field { display: grid; gap: 6px; }
+.table-click tbody tr { cursor: pointer; }
+.table-click tbody tr:hover td { background: color-mix(in srgb, var(--brand) 4%, transparent); }
+.sup-head { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 16px; align-items: start; }
+@media (max-width: 720px) { .sup-head { grid-template-columns: 1fr; } }
+.sup-contact { list-style: none; margin: 0; padding: 12px 14px; display: grid; gap: 6px; border: 1px solid var(--line); border-radius: 12px; font-size: 13.5px; }
+.sup-contact li { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-wrap: anywhere; }
+.sup-contact svg { color: var(--muted); flex: none; }

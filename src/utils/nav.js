@@ -1,7 +1,7 @@
 import {
   MdDashboard, MdManageAccounts, MdSettings, MdMenuBook, MdPerson, MdPlace, MdPalette,
   MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdInventory2, MdCategory, MdLocalOffer, MdBarChart, MdAccountBalance, MdQrCode2, MdNotificationsActive, MdRestaurantMenu,
-  MdSoupKitchen, MdRequestQuote, MdReportProblem, MdLocalDining
+  MdSoupKitchen, MdRequestQuote, MdReportProblem, MdAutoStories, MdLocalShipping
 } from 'react-icons/md'
 
 export const ROLE_LABELS = { superadmin: 'Super administrador', admin: 'Administrador', empleado: 'Empleado', cliente: 'Cliente' }
@@ -25,11 +25,12 @@ const OPERATION = {
 const CATALOG = {
   title: 'Catálogo e inventario',
   items: [
-    { to: '/carta', label: 'Carta', icon: MdLocalDining },
+    { to: '/carta', label: 'Carta', icon: MdAutoStories },
     { to: '/productos', label: 'Productos', icon: MdRestaurantMenu },
     { to: '/categorias', label: 'Categorías', icon: MdCategory },
     { to: '/inventario', label: 'Inventario', icon: MdInventory2 },
-    { to: '/promociones', label: 'Promociones', icon: MdLocalOffer }
+    { to: '/promociones', label: 'Promociones', icon: MdLocalOffer },
+    { to: '/proveedores', label: 'Proveedores', icon: MdLocalShipping }
   ]
 }
 const adminNav = (owner) => [
@@ -58,7 +59,7 @@ const NAV = {
   empleado: [
     { title: 'General', items: [{ to: '/', label: 'Mi turno', icon: MdDashboard, end: true }] },
     OPERATION,
-    { title: 'Consulta', items: [{ to: '/carta', label: 'Carta', icon: MdLocalDining }, { to: '/productos', label: 'Productos', icon: MdRestaurantMenu }, { to: '/inventario', label: 'Inventario', icon: MdInventory2 }] }
+    { title: 'Consulta', items: [{ to: '/carta', label: 'Carta', icon: MdAutoStories }, { to: '/productos', label: 'Productos', icon: MdRestaurantMenu }, { to: '/inventario', label: 'Inventario', icon: MdInventory2 }] }
   ],
   cliente: [
     { title: 'Mi mesa', items: [{ to: '/', label: 'Carta y pedido', icon: MdQrCode2, end: true }] }
