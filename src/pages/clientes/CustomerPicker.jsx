@@ -38,7 +38,7 @@ const CustomerPicker = ({ value, onPick, autoFocus = false }) => {
         <MdStorefront aria-hidden="true" />
         <div className="grow">
           <strong>{value.name}</strong> {value.kindLabel && value.kind !== 'persona' && <Badge>{value.kindLabel}</Badge>} {value.zone && <Badge tone="brand"><MdPlace /> {value.zone}</Badge>}
-          <small className="block muted">{[value.phone, [value.address, value.neighborhood].filter(Boolean).join(', '), value.deliveryFee !== null && value.deliveryFee !== undefined ? `Domicilio ${formatMoney(value.deliveryFee)}` : null, value.creditDays ? `Crédito a ${value.creditDays} días` : null].filter(Boolean).join(' · ')}</small>
+          <small className="block muted">{[value.phone, [value.address, value.neighborhood].filter(Boolean).join(', '), value.deliveryFee === 0 ? 'Domicilio sin costo' : value.deliveryFee ? `Domicilio ${formatMoney(value.deliveryFee)}` : null, value.creditDays ? `Crédito a ${value.creditDays} días` : null].filter(Boolean).join(' · ')}</small>
         </div>
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => onPick(null)} aria-label="Quitar cliente"><MdClose /></button>
       </div>

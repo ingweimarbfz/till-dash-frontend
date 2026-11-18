@@ -212,7 +212,7 @@ const Dashboard = () => {
             )}
           </Card>
         )}
-        {data.staffRanking && (
+        {data.staffRanking && has('carta_qr') && !distributor && (
           <Card title="Mejor servicio" subtitle={data.staffRanking.count ? `Calificaciones de los clientes por QR · últimos 30 días · promedio ${data.staffRanking.avg} ★ (${data.staffRanking.count})` : 'Calificaciones de los clientes por QR · últimos 30 días'} icon={<MdStar />}>
             {!data.staffRanking.rows.length ? <Empty icon={<MdStar />}>Cuando los clientes califiquen el servicio desde el QR de su mesa, verás aquí al mejor empleado.</Empty> : (
               <ol className="staff-rank">{data.staffRanking.rows.map((x, i) => (

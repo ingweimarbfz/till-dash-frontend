@@ -92,13 +92,13 @@ const CustomerDetail = ({ id, onClose, onEdit, onOrder }) => {
             <div><span>Dirección</span>{[d.address, d.neighborhood, d.city].filter(Boolean).join(', ') || '—'}</div>
             <div><span>Contacto</span>{d.contact || '—'}</div>
             <div><span>Cédula o NIT</span>{d.doc || '—'}</div>
-            <div><span>Domicilio</span>{d.deliveryFee === null ? 'El de Configuración' : formatMoney(d.deliveryFee)}</div>
+            <div><span>Domicilio</span>{d.deliveryFee === null ? 'El de Configuración' : d.deliveryFee === 0 ? 'No se le cobra' : formatMoney(d.deliveryFee)}</div>
             <div><span>Paga con</span>{PAY.find(([k]) => k === (d.payMethod || ''))?.[1]}</div>
           </div>
           {d.notes && <div className="alert">{d.notes}</div>}
           <div className="kpis">
-            <Kpi label="Compras" value={formatMoney(d.bought)} note={`${d.orders} pedidos cobrados`} tone="brand" />
-            <Kpi label="Ticket promedio" value={formatMoney(d.orders ? Math.round(d.bought / d.orders) : 0)} />
+            <Kpi label="Compras" value={formatMoney(d.bought)} note={`${d.paidOrders} pedidos cobrados`} tone="brand" />
+            <Kpi label="Ticket promedio" value={formatMoney(d.paidOrders ? Math.round(d.bought / d.paidOrders) : 0)} />
             <Kpi label="Debe" value={formatMoney(d.owed)} icon={MdRequestQuote} tone={d.owed ? 'warn' : ''} note={d.receivables.filter((r) => r.overdue).length ? `${d.receivables.filter((r) => r.overdue).length} vencidas` : null} />
             <Kpi label="Última compra" value={d.lastOrderAt ? formatDate(d.lastOrderAt) : '—'} note={d.open ? `${d.open} pedido${d.open === 1 ? '' : 's'} abierto${d.open === 1 ? '' : 's'}` : null} />
           </div>
