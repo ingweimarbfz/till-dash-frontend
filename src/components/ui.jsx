@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { MdClose, MdCheckCircle, MdError } from 'react-icons/md'
 
 export const initials = (name = '') =>
@@ -54,7 +55,8 @@ export const Modal = ({ title, onClose, children, footer, size = '' }) => {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
-  return (
+  // En el body: abierto desde el panel del pedido (al lado de las mesas) quedaba encerrado y recortado dentro del panel.
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`modal ${size}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-head">
@@ -64,7 +66,8 @@ export const Modal = ({ title, onClose, children, footer, size = '' }) => {
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -76,11 +79,13 @@ export const useToast = () => {
     const t = setTimeout(() => setToast(null), 3500)
     return () => clearTimeout(t)
   }, [toast])
-  const node = toast && (
+  // Se pinta en el body: dentro de un panel con scroll o animado (p. ej. el pedido al lado de las mesas) quedaba recortado.
+  const node = toast && createPortal(
     <div className={`toast ${toast.type}`} role="status" key={toast.key}>
       {toast.type === 'ok' ? <MdCheckCircle /> : <MdError />}
       <span>{toast.message}</span>
-    </div>
+    </div>,
+    document.body
   )
   return [show, node]
 }

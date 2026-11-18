@@ -226,7 +226,9 @@ input[type="checkbox"], input[type="radio"] { width: 16px; height: 16px; flex: n
 .empty .btn svg { font-size: 18px; color: inherit; }
 .spinner { width: 18px; height: 18px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; display: inline-block; animation: spin .7s linear infinite; opacity: .8; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.toast { position: fixed; right: 20px; bottom: 20px; z-index: 100; display: flex; align-items: center; gap: 10px; background: var(--black); color: var(--white); padding: 12px 16px; border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 13.5px; animation: up .2s ease; max-width: calc(100vw - 32px); }
+/* Arriba al centro: abajo a la derecha chocaba con los avisos de stock y con el panel del pedido de las mesas. */
+.toast { position: fixed; left: 50%; top: 18px; transform: translateX(-50%); z-index: 1000; display: flex; align-items: center; gap: 10px; background: var(--black); color: var(--white); padding: 12px 16px; border-radius: 12px; box-shadow: var(--shadow-lg); font-size: 13.5px; animation: toast-in .2s ease; max-width: calc(100vw - 32px); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .toast svg { font-size: 20px; color: var(--brand); }
 .toast.bad svg { color: var(--bad); }
 @keyframes up { from { transform: translateY(10px); opacity: 0; } }
