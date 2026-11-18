@@ -256,6 +256,7 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
             {order.courier && !couriers.some((c) => c.id === order.courier.id) && <option value={order.courier.id}>{order.courier.name}</option>}
           </select></Field>
         ) : <span>Domiciliario: <strong>{order.courier?.name || 'sin asignar'}</strong></span>}
+        <div className={`alert ${order.status === 'cobrado' ? 'ok' : 'warn'}`} style={{ margin: 0 }}>{order.status === 'cobrado' ? `Pagado: ${formatMoney(order.paid || order.total)}.` : `Sin cobrar: ${formatMoney(order.total)}. ${order.deliveryPayMethod === 'efectivo' || !order.deliveryPayMethod ? 'Cóbralo en caja cuando el domiciliario traiga el dinero.' : 'Cóbralo en caja cuando llegue la transferencia.'}`}</div>
         {order.deliveryPayMethod && <small className={order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst ? 'text-warn' : 'muted'}><b>{order.deliveryPayMethod === 'efectivo' ? `💵 Paga en efectivo al domiciliario${order.deliveryCashWith ? ` con ${formatMoney(order.deliveryCashWith)} · llevar ${formatMoney(Math.max(0, order.deliveryCashWith - order.total))} de cambio` : ''}` : `📲 Paga por ${PAY_LABEL[order.deliveryPayMethod]}${order.status !== 'abierto' ? '' : payFirst ? ' · cobrar antes de enviar' : ' · transfiere al llegar'}`}</b></small>}
         <div className="row wrap" style={{ gap: 8 }}>
           <a href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
