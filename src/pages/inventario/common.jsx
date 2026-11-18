@@ -72,18 +72,24 @@ const stockIn = (p, warehouseId) => p.byWarehouse?.find((w) => w.warehouseId ===
 
 // ---------- Entrada, ajuste o baja de varios productos en una bodega ----------
 const MOVE_TITLES = { entrada: 'Entrada (compra)', ajuste: 'Ajuste (+ o −)', baja: 'Baja (daño, pérdida o vencimiento)' }
+// Texto del toast con lo que pasó con el dinero de la compra.
+export const purchaseNote = (d) => {
+  if (!d) return ''
+  if (d.expense) return ` · gasto ${d.expense.number} de ${formatMoney(d.expense.amount)} ${d.expense.session ? `en la caja ${d.expense.session}` : `desde ${d.expense.account}`}`
+  if (d.payable) return ` · cuenta por pagar de ${formatMoney(d.payable.amount)}${d.payable.dueDate ? ` con vencimiento ${d.payable.dueDate}` : ''}`
+  return d.payError ? ` · ${d.payError}` : ''
+}
 export const MovementModal = ({ products: baseProducts, sites, warehouses, defaults = {}, onClose, onSaved }) => {
   const { user } = useAuth()
   // Productos creados aquí mismo (alta rápida) se suman a la lista sin recargar.
   const [created, setCreated] = useState([])
   const products = useMemo(() => [...baseProducts, ...created.filter((c) => !baseProducts.some((p) => p.id === c.id))], [baseProducts, created])
   const [newProduct, setNewProduct] = useState(false)
-  // Turnos de caja abiertos, por si la compra se paga con el efectivo de la caja.
-  const [openSessions, setOpenSessions] = useState([])
-  useEffect(() => { api.get('/caja/turnos', { params: { estado: 'abierta', sede: undefined } }).then(({ data }) => setOpenSessions(data || [])).catch(() => setOpenSessions([])) }, [])
+  // De dónde se paga la compra: caja, cuenta de Finanzas, crédito con el proveedor o inventario inicial.
+  const pay = usePurchasePayment()
   const [f, setF] = useState(() => {
     const p = defaults.productId ? baseProducts.find((x) => x.id === Number(defaults.productId)) : null
-    return { type: 'entrada', warehouseId: '', supplierId: p?.supplierId || null, supplier: p?.supplier || '', invoice: '', note: '', paySessionId: '', ...defaults }
+    return { type: 'entrada', warehouseId: '', supplierId: p?.supplierId || null, supplier: p?.supplier || '', invoice: '', note: '', paidFrom: '', paySessionId: '', payFund: '', dueDate: '', ...defaults }
   })
   const [items, setItems] = useState([])
   const [pick, setPick] = useState(defaults.productId ? String(defaults.productId) : '')
@@ -111,18 +117,20 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (!f.warehouseId) return setError('Selecciona la bodega.')
-    if (f.type === 'entrada' && f.paySessionId && !(purchaseTotal > 0)) return setError('Escribe el costo de los productos para descontarlo de la caja.')
     if (!items.length) return setError('Agrega al menos un producto.')
     const badBox = items.find((i) => boxed && i.pack && !(Number(i.boxes) > 0 && Number(i.perBox) > 0 && Number.isInteger(Number(i.perBox))))
     if (badBox) return setError(`Escribe cuántas cajas y cuántas unidades trae cada caja de ${badBox.product.name}.`)
     const bad = items.find((i) => { const q = real(i).quantity; return !(q !== 0 && Number.isFinite(q)) || (f.type !== 'ajuste' && q < 0) })
     if (bad) return setError(`Revisa la cantidad de ${bad.product.name}.`)
     if (f.type !== 'entrada' && !f.note.trim()) return setError('Escribe el motivo.')
+    const payErr = f.type === 'entrada' ? purchasePayError(f, purchaseTotal, pay, Boolean(f.supplierId || f.supplier?.trim())) : null
+    if (payErr) return setError(payErr)
     setSaving(true)
     try {
-      const { data } = await api.post('/inventario/movimientos', { ...f, paySessionId: f.type === 'entrada' && f.paySessionId ? Number(f.paySessionId) : undefined, items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
+      const payBody = f.type === 'entrada' ? { paidFrom: f.paidFrom, paySessionId: f.paidFrom === 'caja' ? Number(f.paySessionId) : undefined, payFund: f.paidFrom === 'cuenta' ? f.payFund : undefined, dueDate: f.paidFrom === 'credito' ? f.dueDate || undefined : undefined } : { paidFrom: undefined, paySessionId: undefined, payFund: undefined, dueDate: undefined }
+      const { data } = await api.post('/inventario/movimientos', { ...f, ...payBody, items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
       const w = warehouses.find((x) => x.id === Number(f.warehouseId))
-      const paid = data.expense ? ` · gasto ${data.expense.number} de ${formatMoney(data.expense.amount)} en la caja ${data.expense.session}` : data.payError ? ` · no se descontó de la caja: ${data.payError}` : ''
+      const paid = purchaseNote(data)
       onSaved(`${MOVE_TITLES[f.type].split(' ')[0]} ${data.ref} registrada en ${w?.name}${paid}`, data.alerts)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
@@ -184,16 +192,7 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
           })}</div>
         )}
         <div className="form-grid">
-          {f.type === 'entrada' && (
-            <div className="span-2">
-              <Field label="¿Cómo se pagó la compra?" htmlFor="mpay" hint={f.paySessionId ? `Se registra como gasto del turno por ${formatMoney(purchaseTotal)} y sale del efectivo de la caja.` : 'La entrada solo suma inventario; no descuenta nada de la caja. Registra el pago en Finanzas → Gastos o elige la caja.'}>
-                <select id="mpay" value={f.paySessionId} onChange={set('paySessionId')}>
-                  <option value="">No sale de la caja (crédito, transferencia o se registra en Finanzas)</option>
-                  {openSessions.map((x) => <option key={x.id} value={x.id}>Con el efectivo de la caja · {x.register} · {x.number}{x.site ? ` (${x.site})` : ''}</option>)}
-                </select>
-              </Field>
-            </div>
-          )}
+          {f.type === 'entrada' && <PurchasePayment id="mp" value={f} onChange={(v) => { setError(""); setF((x) => ({ ...x, ...v })) }} total={purchaseTotal} pay={pay} />}
           {f.type === 'entrada' && <Field label="N.º de factura" htmlFor="mi"><input id="mi" value={f.invoice} onChange={set('invoice')} /></Field>}
           <div className={f.type === 'entrada' ? '' : 'span-2'}><Field label={f.type === 'entrada' ? 'Nota' : 'Motivo'} htmlFor="mn" required={f.type !== 'entrada'}><input id="mn" value={f.note} onChange={set('note')} placeholder={f.type === 'baja' ? 'Ej. botella rota, producto vencido' : f.type === 'ajuste' ? 'Ej. conteo físico del cierre' : ''} /></Field></div>
         </div>
@@ -201,6 +200,80 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
         {error && <div className="alert bad">{error}</div>}
       </form>
     </Modal>
+  )
+}
+
+// ---------- De dónde se pagó una compra (entrada de inventario o stock inicial) ----------
+const PAY_HINTS = {
+  caja: 'Sale del efectivo del turno elegido y queda como gasto del turno.',
+  cuenta: 'Sale de la cuenta o subcuenta elegida y queda como gasto en Finanzas.',
+  credito: 'No sale dinero hoy: queda una cuenta por pagar al proveedor en Finanzas → Por pagar.',
+  inicial: 'Mercancía que ya tenías: suma inventario sin registrar pago.',
+  externo: 'Suma inventario sin descontar dinero del sistema.'
+}
+export const usePurchasePayment = () => {
+  const [opts, setOpts] = useState(null)
+  const [sessions, setSessions] = useState([])
+  const [funds, setFunds] = useState([])
+  useEffect(() => {
+    api.get('/inventario/pago-opciones').then(({ data }) => {
+      setOpts(data)
+      if (data.finance) api.get('/finanzas/fondos', { params: { sede: undefined } }).then(({ data: d }) => setFunds((d.funds || []).filter((x) => x.active !== false))).catch(() => setFunds([]))
+    }).catch(() => setOpts({ finance: false, sources: [] }))
+    api.get('/caja/turnos', { params: { estado: 'abierta', sede: undefined } }).then(({ data }) => setSessions(data || [])).catch(() => setSessions([]))
+  }, [])
+  return { opts, sessions, funds }
+}
+// Devuelve el error a mostrar o null.
+export const purchasePayError = (v, total, { sessions, funds }, hasSupplier) => {
+  if (!v.paidFrom) return 'Elige de dónde se pagó la compra.'
+  if (['caja', 'cuenta', 'credito'].includes(v.paidFrom) && !(total > 0)) return 'Escribe el costo de los productos: con él se registra el pago.'
+  if (v.paidFrom === 'caja') {
+    const s = sessions.find((x) => String(x.id) === String(v.paySessionId))
+    if (!s) return 'Elige el turno de caja del que sale el efectivo.'
+  }
+  if (v.paidFrom === 'cuenta') {
+    const f = funds.find((x) => x.key === v.payFund)
+    if (!f) return 'Elige la cuenta de la que sale el dinero.'
+    if (f.balance < total) return `${f.kind === 'subcuenta' ? `La subcuenta ${f.name}` : f.name} solo tiene ${formatMoney(f.balance)}. Ingresa dinero en Finanzas, elige otra cuenta o regístrala a crédito.`
+  }
+  if (v.paidFrom === 'credito' && !hasSupplier) return 'Elige el proveedor que te dio el crédito.'
+  return null
+}
+export const PurchasePayment = ({ id = 'pp', value, onChange, total, pay }) => {
+  const { opts, sessions, funds } = pay
+  const set = (k) => (e) => onChange({ [k]: e?.target ? e.target.value : e })
+  if (!opts) return <Spinner />
+  const fund = funds.find((x) => x.key === value.payFund)
+  return (
+    <div className="span-2 stack" style={{ gap: 10 }}>
+      <Field label="¿De dónde se pagó la compra?" required hint={value.paidFrom ? PAY_HINTS[value.paidFrom] : `Total de la compra: ${formatMoney(total)}`}>
+        <div className="chip-list" role="radiogroup" aria-label="De dónde se pagó la compra">
+          {opts.sources.map((o) => <button key={o.key} type="button" role="radio" aria-checked={value.paidFrom === o.key} className={`pchip${value.paidFrom === o.key ? ' on' : ''}`} onClick={() => onChange({ paidFrom: o.key })}>{o.label}</button>)}
+        </div>
+      </Field>
+      {value.paidFrom === 'caja' && (
+        <Field label="Turno de caja" htmlFor={`${id}s`} hint={!sessions.length ? 'No hay turnos de caja abiertos.' : null}>
+          <select id={`${id}s`} value={value.paySessionId || ''} onChange={set('paySessionId')}>
+            <option value="">Selecciona…</option>
+            {sessions.map((x) => <option key={x.id} value={x.id}>{x.register} · {x.number}{x.site ? ` (${x.site})` : ''}</option>)}
+          </select>
+        </Field>
+      )}
+      {value.paidFrom === 'cuenta' && (
+        <Field label="Cuenta" htmlFor={`${id}f`} hint={fund ? (fund.balance < total ? <span className="warn-text">Disponible {formatMoney(fund.balance)}: no alcanza para {formatMoney(total)}.</span> : `Disponible ${formatMoney(fund.balance)} · quedan ${formatMoney(fund.balance - total)}`) : null}>
+          <select id={`${id}f`} value={value.payFund || ''} onChange={set('payFund')}>
+            <option value="">Selecciona…</option>
+            {funds.map((x) => <option key={x.key} value={x.key}>{x.kind === 'subcuenta' ? `   ${x.name} (${x.parent})` : x.name} · {formatMoney(x.balance)}</option>)}
+          </select>
+        </Field>
+      )}
+      {value.paidFrom === 'credito' && (
+        <Field label="Fecha límite de pago" htmlFor={`${id}d`} hint="Vacío: se usa el plazo del proveedor.">
+          <input id={`${id}d`} type="date" value={value.dueDate || ''} onChange={set('dueDate')} />
+        </Field>
+      )}
+    </div>
   )
 }
 

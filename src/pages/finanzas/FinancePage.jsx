@@ -129,10 +129,11 @@ const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onCl
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
   return (
-    <Modal title="Registrar gasto" size="lg" onClose={onClose}
+    <Modal title={f.payableId ? `Pagar ${f.payableRef} a ${f.supplier || 'el proveedor'}` : 'Registrar gasto'} size="lg" onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="exp-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdAdd />} Registrar</button></>}>
       <form id="exp-form" className="form-grid" onSubmit={submit} noValidate>
-        <Field label="Categoría" htmlFor="xc" required><select id="xc" value={f.category} onChange={set('category')} autoFocus><option value="">Elige la categoría</option>{Object.entries(categories).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
+        {f.payableId && <div className="alert span-2">Compra a crédito {f.payableRef}: saldo {formatMoney(f.payableBalance)}. Puedes abonar una parte o pagarla toda.</div>}
+        <Field label="Categoría" htmlFor="xc" required><select id="xc" value={f.category} onChange={set('category')} autoFocus disabled={Boolean(f.payableId)}><option value="">Elige la categoría</option>{Object.entries(categories).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field label="Valor" htmlFor="xa" required><MoneyInput id="xa" value={f.amount} onChange={set('amount')} /></Field>
         <div className="span-2"><Field label="Descripción" htmlFor="xd" required><input id="xd" value={f.description} onChange={set('description')} placeholder="Ej. arriendo de noviembre, recibo de energía" /></Field></div>
         <SupplierField id="xs" value={f} onChange={(v) => setF((x) => ({ ...x, ...v }))} allowFree />
@@ -162,7 +163,7 @@ const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onCl
             <div className="chip-list" style={{ marginTop: 6 }}>{sub.services.map((sv) => <button key={sv.name} type="button" className={`pchip${f.description === sv.name ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, description: sv.name, category: sv.category }))}>{sv.name}</button>)}</div>
           </div>
         )}
-        {f.category === 'compras' && <small className="muted span-2">Las compras de inventario no restan dos veces: la utilidad ya descuenta el costo de lo vendido.</small>}
+        {f.category === 'compras' && !f.payableId && <small className="muted span-2">Las compras de inventario no restan dos veces: la utilidad ya descuenta el costo de lo vendido.</small>}
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
     </Modal>
@@ -227,13 +228,17 @@ const VoidModal = ({ doc, onClose, onDone }) => {
   const [reason, setReason] = useState(''); const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const submit = async (e) => {
     e.preventDefault(); setError(''); setSaving(true)
-    try { await api.post('/finanzas/anular', { kind: doc.kind, id: doc.id, reason }, { params: NO_SITE }); onDone() } catch (err) { setError(errorMessage(err)); setSaving(false) }
+    try {
+      if (doc.kind === 'payable') await api.post(`/finanzas/por-pagar/${doc.id}/anular`, { reason }, { params: NO_SITE })
+      else await api.post('/finanzas/anular', { kind: doc.kind, id: doc.id, reason }, { params: NO_SITE })
+      onDone()
+    } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
   return (
     <Modal title={`Anular ${doc.number}`} onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="void-form" className="btn btn-danger" disabled={saving}>{saving ? <Spinner /> : <MdBlock />} Anular</button></>}>
       <form id="void-form" className="stack" onSubmit={submit} noValidate>
-        <p className="muted" style={{ margin: 0 }}>El valor de {formatMoney(doc.amount)} vuelve a su fondo (o a la caja si sigue abierta).</p>
+        <p className="muted" style={{ margin: 0 }}>{doc.kind === 'payable' ? `Se cancela la deuda de ${formatMoney(doc.amount)} con ${doc.supplier || 'el proveedor'}. El inventario que entró no cambia: si la mercancía se devolvió, regístralo con una baja.` : `El valor de ${formatMoney(doc.amount)} vuelve a su fondo (o a la caja si sigue abierta).`}</p>
         <Field label="Motivo" htmlFor="vr" required><input id="vr" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus /></Field>
         {error && <div className="alert bad">{error}</div>}
       </form>
@@ -488,6 +493,48 @@ const Expenses = ({ range, rangeNode, version, onNew, onVoid }) => {
   )
 }
 
+const Payables = ({ version, onPay, onVoid, owner }) => {
+  const [estado, setEstado] = useState('pendiente'); const [r, setR] = useState(null); const [error, setError] = useState('')
+  useEffect(() => { api.get('/finanzas/por-pagar', { params: { estado, ...NO_SITE } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [estado, version])
+  return (
+    <div className="stack">
+      {error && <div className="alert bad">{error}</div>}
+      {!r ? <Spinner /> : (
+        <>
+          <div className="kpis">
+            <Kpi label="Por pagar a proveedores" value={formatMoney(r.totals.pending)} icon={MdReceiptLong} tone="dark" note={`${r.totals.count} compra${r.totals.count === 1 ? '' : 's'} a crédito pendiente${r.totals.count === 1 ? '' : 's'}`} />
+            <Kpi label="Vencido" value={formatMoney(r.totals.overdue)} note={r.totals.overdue ? 'Pasó la fecha límite' : 'Nada vencido'} />
+          </div>
+          <Card title="Cuentas por pagar" subtitle="Compras de inventario a crédito con el proveedor. Cada pago queda como gasto de Compras de inventario." flush
+            actions={<div className="card-actions"><select value={estado} onChange={(e) => setEstado(e.target.value)} aria-label="Estado"><option value="pendiente">Pendientes</option><option value="pagada">Pagadas</option><option value="anulada">Anuladas</option><option value="todas">Todas</option></select></div>}>
+            {!r.rows.length ? <Empty icon={<MdReceiptLong />}>{estado === 'pendiente' ? 'No le debes a ningún proveedor.' : 'No hay cuentas por pagar con este estado.'}</Empty> : (
+              <div className="table-wrap"><table className="table">
+                <thead><tr><th>Proveedor</th><th>Compra</th><th>Vence</th><th className="num">Valor</th><th className="num">Pagado</th><th className="num">Saldo</th><th /></tr></thead>
+                <tbody>{r.rows.map((x) => (
+                  <tr key={x.id} className={x.status === 'anulada' ? 'voided' : ''}>
+                    <td><strong>{x.supplier || "Sin proveedor"}</strong>{x.siteId ? <><br /><small className="muted">{x.site}</small></> : null}</td>
+                    <td><strong>{x.ref}</strong>{x.invoiceRef ? <small className="muted"> · Fact. {x.invoiceRef}</small> : null}<br /><small className="muted">{x.description}</small></td>
+                    <td>{x.dueDate ? formatDate(x.dueDate) : '—'} {x.overdue && <Badge tone="bad">Vencida</Badge>}</td>
+                    <td className="num money">{formatMoney(x.amount)}</td>
+                    <td className="num money">{formatMoney(x.paid)}</td>
+                    <td className="num money"><strong>{formatMoney(x.balance)}</strong></td>
+                    <td className="num">
+                      {x.status === 'pendiente' && <button type="button" className="btn btn-sm btn-primary" onClick={() => onPay(x)}><MdPayments /> Pagar</button>}
+                      {x.status === 'pagada' && <Badge tone="ok">Pagada</Badge>}
+                      {x.status === 'anulada' && <Badge tone="bad">Anulada</Badge>}
+                      {owner && x.status === 'pendiente' && !x.paid && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onVoid({ kind: 'payable', number: x.ref, ...x })} title="Anular"><MdBlock /></button>}
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table></div>
+            )}
+          </Card>
+        </>
+      )}
+    </div>
+  )
+}
+
 const Entries = ({ range, rangeNode, version, onNew, onVoid }) => {
   const [r, setR] = useState(null); const [error, setError] = useState('')
   useEffect(() => { api.get('/finanzas/ingresos', { params: { desde: range.from, hasta: range.to, ...NO_SITE } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [range, version])
@@ -591,7 +638,7 @@ const FinancePage = () => {
           )}
         </div>
       )}
-      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['fondos', 'Fondos y subcuentas'], ['gastos', 'Gastos'], ['ingresos', 'Ingresos de dinero'], ['socios', 'Socios']]} />
+      <Tabs value={tab} onChange={setTab} tabs={[['resumen', 'Resumen'], ['cuentas', 'Cuentas'], ['fondos', 'Fondos y subcuentas'], ['gastos', 'Gastos'], ['porpagar', 'Por pagar'], ['ingresos', 'Ingresos de dinero'], ['socios', 'Socios']]} />
       {error && <div className="alert bad">{error}</div>}
       {!ready ? <div className="splash" style={{ minHeight: 240 }}><Spinner /></div> : (
         <>
@@ -601,6 +648,8 @@ const FinancePage = () => {
             onNewSub={(parentKey) => setModal({ type: 'sub', sub: { parentKey } })} onEditSub={(sub) => setModal({ type: 'sub', sub })}
             onPayService={(sub, sv) => setModal({ type: 'expense', initial: { source: 'fondo', fund: sub.key, ...(sv ? { description: sv.name, category: sv.category } : {}) } })} />}
           {tab === 'gastos' && <Expenses range={range} rangeNode={rangeNode} version={version} onNew={() => setModal({ type: 'expense' })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
+          {tab === 'porpagar' && <Payables version={version} owner={owner} onVoid={(doc) => setModal({ type: 'void', doc })}
+            onPay={(x) => setModal({ type: 'expense', initial: { payableId: x.id, payableRef: x.ref, payableBalance: x.balance, category: 'compras', description: `Pago ${x.ref}${x.invoiceRef ? ` · factura ${x.invoiceRef}` : ''}`, supplierId: x.supplierId, supplier: x.supplier || '', invoiceRef: x.invoiceRef || '', amount: x.balance, fund: x.siteId ? String(x.siteId) : 'general' } })} />}
           {tab === 'ingresos' && <Entries range={range} rangeNode={rangeNode} version={version} onNew={(fund) => setModal({ type: 'entry', fund })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
           {tab === 'socios' && <Partners data={partners} onNew={() => setModal({ type: 'partner' })} onEdit={(p) => setModal({ type: 'partner', partner: p })} onPay={(initial) => setModal({ type: 'pay', initial })} onVoid={(doc) => setModal({ type: 'void', doc })} />}
         </>
