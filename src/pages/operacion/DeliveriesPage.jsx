@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsBike, MdRefresh, MdUndo, MdAccountBalanceWallet } from 'react-icons/md'
+import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsBike, MdRefresh, MdUndo, MdAccountBalanceWallet, MdPayments } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Kpi, PageHead, Spinner, useToast } from '../../components/ui'
 import { formatDateTime, formatMoney, minutesLabel } from '../../utils/format'
@@ -41,6 +41,16 @@ const deliveryActions = ({ user, status, courier, mustPayFirst, dispatchBlock })
   }
   return { undo: mine ? 'en_camino' : null }
 }
+// TD-015: dinero recibido. El domiciliario asignado avisa que el cliente le pagó en efectivo (si iba en camino,
+// también queda entregado) y al personal le sale el aviso para cobrarlo en caja.
+const cashState = ({ user, courier, status, cashPay, paid, cashReceivedAt }) => {
+  if (!cashPay || paid || status === 'por_despachar') return null
+  const mine = isCourier(user) && courier?.id === user.id
+  if (cashReceivedAt) return { reported: true, canUndo: mine, text: mine ? `Avisaste que recibiste el dinero ${since(cashReceivedAt)}. Entrégalo en caja.` : `💵 ${courier?.name || 'El domiciliario'} recibió el dinero ${since(cashReceivedAt)}. Cóbralo en caja.` }
+  return mine ? { report: true } : null
+}
+const cashRequest = (d, kind) => api.post(`/domicilios/${d.id}/dinero-recibido${kind === 'undo' ? '/deshacer' : ''}`)
+const cashToast = (d, kind, data) => (kind === 'undo' ? 'Aviso de dinero recibido deshecho' : `Listo: avisamos en caja que recibiste el dinero del ${d.number}${data?.delivered ? ' y quedó entregado' : ''}`)
 // Cambia el estado o el domiciliario de un domicilio y avisa.
 const useDeliveryAction = (load) => {
   const [toast, toastNode] = useToast()
@@ -48,7 +58,7 @@ const useDeliveryAction = (load) => {
   const onAction = async (d, body) => {
     setBusy(true)
     try {
-      if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast('Domiciliario asignado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
+      if ('cash' in body) { const { data: r } = await cashRequest(d, body.cash); toast(cashToast(d, body.cash, r)) } else if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast('Domiciliario asignado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
       load()
     } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
   }
@@ -61,6 +71,7 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
   const { user } = useAuth()
   const city = data.origin.city
   const act = deliveryActions({ user, status: d.deliveryStatus, courier: d.courier, mustPayFirst: d.mustPayFirst, dispatchBlock: d.dispatchBlock })
+  const cash = cashState({ user, courier: d.courier, status: d.deliveryStatus, cashPay: d.cashPay, paid: d.paid, cashReceivedAt: d.cashReceivedAt })
   return (
     <li className={`delivery-card st-${d.deliveryStatus}`}>
       <div className="row-between">
@@ -92,11 +103,17 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
         {act.undo && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAction(d, { status: act.undo })} disabled={busy} title="Deshacer"><MdUndo /></button>}
         <a href={mapUrl(d.address, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
         {act.payFirst && <Link to={`/pedidos/${d.id}`} className="btn btn-sm" title="Se paga antes de enviar">Cobrar antes de enviar</Link>}
-        {act.next && <button type="button" className="btn btn-sm btn-primary" onClick={() => onAction(d, { status: act.next.status })} disabled={busy}>{act.next.icon} {act.next.label}</button>}
+        {act.next && <button type="button" className={`btn btn-sm${cash?.report ? '' : ' btn-primary'}`} onClick={() => onAction(d, { status: act.next.status })} disabled={busy}>{act.next.icon} {act.next.label}</button>}
+        {cash?.report && <button type="button" className="btn btn-sm btn-primary" onClick={() => onAction(d, { cash: 'report' })} disabled={busy} title="Avisa en caja que el cliente te pagó en efectivo"><MdPayments /> Recibí el dinero</button>}
         {act.blocked && <button type="button" className="btn btn-sm" disabled title={act.blocked}><MdDirectionsBike /> {isCourier(user) ? 'Salí con el pedido' : 'Salió con el pedido'}</button>}
       </div>
       {act.blocked && <small className="text-warn">{act.blocked}</small>}
-      {act.waiting && <small className="muted">{act.waiting}</small>}
+      {act.waiting && !cash?.reported && <small className="muted">{act.waiting}</small>}
+      {cash?.reported && (
+        <div className="delivery-cash"><MdPayments /> <span className="grow">{cash.text}</span>
+          {cash.canUndo && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAction(d, { cash: 'undo' })} disabled={busy} title="Deshacer el aviso de dinero recibido"><MdUndo /></button>}
+        </div>
+      )}
     </li>
   )
 }
@@ -262,8 +279,11 @@ export const CourierHome = () => {
   const { onAction, busy, toastNode } = useDeliveryAction(load)
   if (!data) return null
   const t = data.totals
-  // Primero los que ya van en camino (para marcarlos entregados), luego los que están por salir.
-  const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado').sort((a, b) => (a.deliveryStatus === 'en_camino' ? 0 : 1) - (b.deliveryStatus === 'en_camino' ? 0 : 1))
+  // Primero los entregados que falta avisar el dinero, luego los que van en camino y al final los que están por salir.
+  // TD-015: un domicilio entregado en efectivo sigue aquí hasta que avise que recibió el dinero o se cobre.
+  const cashPending = (d) => d.deliveryStatus === 'entregado' && d.cashPay && !d.paid && !d.cashReceivedAt
+  const rank = (d) => (cashPending(d) ? 0 : d.deliveryStatus === 'en_camino' ? 1 : 2)
+  const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado' || cashPending(d)).sort((a, b) => rank(a) - rank(b))
   return (<>
     <Card title="Mis domicilios por llevar" icon={<MdDeliveryDining />} subtitle={active.length ? `${t.onTheWay} en camino · ${t.pending} por despachar` : null} actions={<Link to="/domicilios" className="btn btn-sm">Ver todos mis domicilios</Link>}>
       {toastNode}
@@ -293,9 +313,10 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
   const st = order.deliveryStatus || 'por_despachar'
   const mustPayFirst = Boolean(order.deliveryPayMethod && order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst)
   const flow = deliveryActions({ user, status: st, courier: order.courier, mustPayFirst, dispatchBlock: order.dispatchBlock })
+  const cash = cashState({ user, courier: order.courier, status: st, cashPay: !order.deliveryPayMethod || order.deliveryPayMethod === 'efectivo', paid: order.status !== 'abierto', cashReceivedAt: order.cashReceivedAt })
   const act = async (url, body, msg) => {
     setBusy(true)
-    try { await api.post(url, body); toast(msg); onChanged() } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
+    try { const { data } = await api.post(url, body); toast(typeof msg === 'function' ? msg(data) : msg); onChanged() } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
   }
   return (
     <Card title="Domicilio" icon={<MdDeliveryDining />} actions={<Badge tone={TONE[st]}>{STATUS_LABEL[st]}</Badge>}>
@@ -315,11 +336,17 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
         <div className="row wrap" style={{ gap: 8 }}>
           <a href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
           {flow.undo && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.undo }, 'Estado actualizado')} title="Deshacer"><MdUndo /></button>}
-          {flow.next && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.next.status }, flow.next.status === 'entregado' ? 'Entregado' : 'En camino')}>{flow.next.icon} {flow.next.label}</button>}
+          {flow.next && <button type="button" className={`btn btn-sm${cash?.report ? '' : ' btn-primary'}`} disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.next.status }, flow.next.status === 'entregado' ? 'Entregado' : 'En camino')}>{flow.next.icon} {flow.next.label}</button>}
+          {cash?.report && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/dinero-recibido`, {}, (r) => cashToast(order, 'report', r))}><MdPayments /> Recibí el dinero</button>}
           {flow.blocked && <button type="button" className="btn btn-sm" disabled title={flow.blocked}><MdDirectionsBike /> Salió</button>}
         </div>
+        {cash?.reported && (
+          <div className="delivery-cash"><MdPayments /> <span className="grow">{cash.text}</span>
+            {cash.canUndo && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => act(`/domicilios/${order.id}/dinero-recibido/deshacer`, {}, 'Aviso de dinero recibido deshecho')} title="Deshacer el aviso de dinero recibido"><MdUndo /></button>}
+          </div>
+        )}
         {flow.blocked && <small className="text-warn">{flow.blocked}</small>}
-        {flow.waiting && <small className="muted">{flow.waiting}</small>}
+        {flow.waiting && !cash?.reported && <small className="muted">{flow.waiting}</small>}
       </div>
     </Card>
   )

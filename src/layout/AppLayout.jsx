@@ -12,6 +12,7 @@ import { BrandLogo } from '../components/Logo'
 import SearchPalette, { useSearchShortcut } from '../components/SearchPalette'
 import StockAlerts from '../components/StockAlerts'
 import TableCalls from '../components/TableCalls'
+import CourierCashAlerts from '../components/CourierCashAlerts'
 
 // Fecha corta: "Lun, 16 Nov 2026".
 const todayLabel = (() => {
@@ -194,7 +195,11 @@ const AppLayout = () => {
         </main>
         {searching && <SearchPalette onClose={() => setSearching(false)} />}
         {user.role !== 'cliente' && <StockAlerts key={site || 'all'} />}
-        {plan.has('carta_qr') && plan.has('mesas') && (admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host'].includes(p)))) && <TableCalls key={`calls-${site || 'all'}`} />}
+        <div className="call-dock">
+          {plan.has('carta_qr') && plan.has('mesas') && (admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host'].includes(p)))) && <TableCalls key={`calls-${site || 'all'}`} />}
+          {/* TD-015: el domiciliario avisa que recibió el efectivo; lo ve el personal que puede cobrar. */}
+          {plan.has('domicilios') && (admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host', 'bartender', 'barista'].includes(p)))) && <CourierCashAlerts key={`cash-${site || 'all'}`} />}
+        </div>
       </div>
     </div>
   )
