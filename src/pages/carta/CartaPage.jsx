@@ -56,7 +56,9 @@ const MenuEditor = ({ initial, catalog, onClose, onSaved }) => {
   const [saving, setSaving] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? (v.target.type === 'checkbox' ? v.target.checked : v.target.value) : v }))
   const toggleIn = (k, id) => setF((x) => ({ ...x, [k]: x[k].includes(id) ? x[k].filter((y) => y !== id) : [...x[k], id] }))
-  const menuCats = catalog.categories.filter((c) => c.active && c.showInMenu)
+  // TD-025: con sucursales elegidas, solo lo que se vende en al menos una de ellas.
+  const sold = (ids) => !f.siteIds.length || !ids?.length || ids.some((id) => f.siteIds.includes(id))
+  const menuCats = catalog.categories.filter((c) => c.active && c.showInMenu && sold(c.siteIds))
   // Secciones elegidas en su orden; si no eligió ninguna, la carta muestra todas.
   const chosen = f.categoryIds.length ? f.categoryIds : []
   const move = (id, d) => setF((x) => {
@@ -65,7 +67,7 @@ const MenuEditor = ({ initial, catalog, onClose, onSaved }) => {
     ;[list[i], list[j]] = [list[j], list[i]]
     return { ...x, categoryIds: list }
   })
-  const prods = catalog.products.filter((p) => p.active && p.showInMenu && (!chosen.length || chosen.includes(p.categoryId)) && (!q || p.name.toLowerCase().includes(q.toLowerCase())))
+  const prods = catalog.products.filter((p) => p.active && p.showInMenu && sold(p.siteIds) && sold(p.categorySiteIds) && (!chosen.length || chosen.includes(p.categoryId)) && (!q || p.name.toLowerCase().includes(q.toLowerCase())))
   const submit = async (e) => {
     e.preventDefault(); setError(''); setSaving(true)
     const body = { ...f, timeFrom: f.timeFrom || null, timeTo: f.timeTo || null }
@@ -177,18 +179,27 @@ const MenusTab = ({ menus, catalog, onReload, toast }) => {
 }
 
 // ---------- Opciones del QR ----------
+// TD-025: generales o por sucursal. Una sucursal sin opciones propias usa las generales.
 const QrOptions = ({ catalog, toast }) => {
   const [o, setO] = useState(null)
   const [saving, setSaving] = useState(false)
-  useEffect(() => { api.get('/cartas/opciones').then(({ data }) => setO(data)).catch((e) => toast(errorMessage(e), 'bad')) }, [toast])
+  const [site, setSite] = useState('')
+  const sites = (catalog.sites || []).filter((s) => s.active !== false)
+  useEffect(() => { setO(null); api.get('/cartas/opciones', { params: site ? { sucursal: site } : {} }).then(({ data }) => setO(data)).catch((e) => toast(errorMessage(e), 'bad')) }, [toast, site])
   if (!o) return <div className="splash" style={{ minHeight: 200 }}><Spinner /></div>
   if (!o.qrModule) return <Card><Empty icon={<MdQrCode2 />}>Tu plan no incluye la carta por QR. <Link to="/mi-plan">Ver Mi plan</Link>.</Empty></Card>
   const set = (k) => (e) => setO((x) => ({ ...x, [k]: e.target.checked }))
   const both = o.orderConfirm && o.orderDirect
   const save = async () => {
     setSaving(true)
-    try { const { data } = await api.put('/cartas/opciones', o); setO(data); toast('Opciones del QR guardadas') } catch (e) { toast(errorMessage(e), 'bad') } finally { setSaving(false) }
+    try { const { data } = await api.put('/cartas/opciones', { ...o, siteId: site || null }); setO(data); toast(site ? 'Opciones del QR de la sucursal guardadas' : 'Opciones del QR guardadas') } catch (e) { toast(errorMessage(e), 'bad') } finally { setSaving(false) }
   }
+  const useGeneral = async () => {
+    setSaving(true)
+    try { const { data } = await api.put('/cartas/opciones', { siteId: site, useGeneral: true }); setO(data); toast('La sucursal vuelve a usar las opciones generales') } catch (e) { toast(errorMessage(e), 'bad') } finally { setSaving(false) }
+  }
+  const siteName = sites.find((s) => s.id === Number(site))?.name
+  const siteCats = catalog.categories.filter((c) => c.active && c.showInMenu && (!site || !c.siteIds?.length || c.siteIds.includes(Number(site))))
   const OPTS = [
     ['callWaiter', <MdRoomService key="i" />, 'Llamar al mesero', 'El cliente avisa que necesita atención; el personal recibe el aviso con sonido.'],
     ['requestBill', <MdReceipt key="i" />, 'Pedir la cuenta', 'La mesa queda marcada "por cobrar" en el salón.'],
@@ -200,6 +211,19 @@ const QrOptions = ({ catalog, toast }) => {
       <Card title="¿Qué puede hacer el cliente al escanear el QR?" subtitle="Activa todas las opciones que quieras al mismo tiempo." icon={<MdQrCode2 />}
         actions={<button type="button" className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? <Spinner /> : <MdSave />} Guardar</button>}>
         <div className="stack" style={{ gap: 8 }}>
+          {sites.length > 1 && (
+            <div className="qr-direct">
+              <b><MdPlace /> ¿Para qué sucursal?</b>
+              <div className="chip-list">
+                <button type="button" className={`pchip${site ? '' : ' on'}`} onClick={() => setSite('')}>Generales (todas)</button>
+                {sites.map((s) => <button key={s.id} type="button" className={`pchip${Number(site) === s.id ? ' on' : ''}`} onClick={() => setSite(String(s.id))}>{s.name}</button>)}
+              </div>
+              {site && (o.own
+                ? <small className="muted">{siteName} tiene sus propias opciones. <button type="button" className="link-btn" onClick={useGeneral} disabled={saving}>Volver a las generales</button></small>
+                : <small className="muted">{siteName} usa las opciones generales. Si cambias algo y guardas, la sucursal queda con las suyas.</small>)}
+              {!site && <small className="muted">Aplican en las sucursales que no tienen opciones propias.</small>}
+            </div>
+          )}
           {OPTS.map(([k, icon, l, d]) => (
             <label key={k} className={`check-card${o[k] ? ' on' : ''}`}>
               <input type="checkbox" checked={o[k]} onChange={set(k)} />
@@ -210,7 +234,7 @@ const QrOptions = ({ catalog, toast }) => {
             <div className="qr-direct">
               <b>¿Qué va directo a cocina y bar?</b>
               <small className="muted">Las categorías marcadas entran de una vez; el resto lo confirma el mesero. Ej. bebidas directo y platos fuertes con confirmación.</small>
-              <div className="chip-list">{catalog.categories.filter((c) => c.active && c.showInMenu).map((c) => {
+              <div className="chip-list">{siteCats.map((c) => {
                 const on = o.directCategories.includes(c.id)
                 return <button key={c.id} type="button" className={`pchip${on ? ' on' : ''}`} onClick={() => setO((x) => ({ ...x, directCategories: on ? x.directCategories.filter((y) => y !== c.id) : [...x.directCategories, c.id] }))}>{c.emoji} {c.name}</button>
               })}</div>
