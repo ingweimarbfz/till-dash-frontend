@@ -1755,3 +1755,6 @@ tr.row-expired td { background: var(--bad-50); }
 @media (prefers-reduced-motion: reduce) { .nav-badge.pulse { animation: none; } }
 .menu-toggle { position: relative; }
 .menu-toggle-dot { position: absolute; top: 2px; right: 0; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 10px; font-weight: 700; line-height: 17px; text-align: center; pointer-events: none; }
+
+/* TD-027: encabezado de grupo dentro de una tabla (p. ej. usuarios por sucursal) */
+.table tr.group-row th { background: var(--brand-50); color: var(--brand-600); text-align: left; font-weight: 600; padding-top: 10px; padding-bottom: 10px; }
