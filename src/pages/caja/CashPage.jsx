@@ -211,7 +211,7 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
                 <label className="check"><input type="checkbox" checked={bonusOn} disabled={!best} onChange={(e) => { setBonusOn(e.target.checked); split({ bonusOn: e.target.checked }) }} />
                   <span><strong>Dar más propina al mejor calificado</strong><small className="block muted">{best ? `${best.name} · ${(best.rating || best.ratingMonth).avg} ★ (${(best.rating || best.ratingMonth).count} calificaciones${best.rating ? ' en el turno' : ' en 30 días'})` : 'Aún no hay calificaciones del personal elegido.'}</small></span>
                 </label>
-                {bonusOn && best && <div className="input-prefix" style={{ width: 120 }}><span>+%</span><input inputMode="decimal" value={bonusPct} onChange={(e) => { setBonusPct(e.target.value); split({ bonusPct: e.target.value }) }} aria-label="Porcentaje adicional" /></div>}
+                {bonusOn && best && <div className="input-prefix bonus-pct"><span>+</span><input inputMode="decimal" value={bonusPct} onChange={(e) => { setBonusPct(e.target.value); split({ bonusPct: e.target.value }) }} aria-label="Porcentaje adicional" /><i aria-hidden="true">%</i></div>}
                 <button type="button" className="btn btn-sm" onClick={() => split()}>Recalcular</button>
               </div>
             )}
