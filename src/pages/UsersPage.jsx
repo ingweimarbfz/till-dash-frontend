@@ -281,13 +281,13 @@ const UsersPage = () => {
                     {g.title && sites.length > 1 && <tr className="group-row"><th colSpan={6}>{g.title} <small className="muted">· {g.rows.length} usuario{g.rows.length === 1 ? '' : 's'}</small></th></tr>}
                     {g.rows.map((u) => (
                       <tr key={u.id}>
-                        <td><div className="person"><Avatar user={u} size="sm" /><div><strong>{u.fullName}</strong>{(u.positions || []).includes('domiciliario') && <> <Badge tone="info">🛵 Domiciliario{u.courierExternal ? ' externo' : ''}</Badge></>}<small>{u.username} · {u.identification}</small></div></div></td>
+                        <td><div className="person"><Avatar user={u} size="sm" /><div><strong>{u.fullName}</strong><small>{u.username} · {u.identification}</small></div></div></td>
                         <td>
                           <span className="badges">{(u.profiles || [u.role]).map((r) => <Badge key={r} tone={ROLE_TONE[r]}>{ROLE_LABELS[r]}</Badge>)}</span>
-                          {!!u.positions?.length && <><br /><small>{u.positions.map((p) => positionLabel(p, distributor)).join(', ')}</small></>}
+                          {!!u.positions?.length && <><br /><small>{u.positions.map((p, i) => <React.Fragment key={p}>{i > 0 && ', '}{p === 'domiciliario' ? <Badge tone="info">{positionLabel(p, distributor)}{u.courierExternal ? ' externo' : ''}</Badge> : positionLabel(p, distributor)}</React.Fragment>)}</small></>}
                           {u.role === 'admin' && u.canManagePay && <><br /><small className="muted">Gestiona los pagos al personal</small></>}
                           {u.courierPay === 'jornada' && (u.positions || []).includes('domiciliario') && <><br /><small className="muted">Domiciliario por jornada</small></>}
-                          {(u.positions || []).includes('domiciliario') && <><br /><small className="muted">{[u.courierExternal ? 'Externo' : null, u.courierFloat === 'propia' ? 'Base propia' : 'Base de la empresa', u.vehicle].filter(Boolean).join(' · ')}</small></>}
+                          {(u.positions || []).includes('domiciliario') && <><br /><small className="muted">{[u.courierFloat === 'propia' ? 'Base propia' : 'Base de la empresa', u.vehicle].filter(Boolean).join(' · ')}</small></>}
                           {u.payMode === 'turno' && <><br /><small className="muted">Por turno · {formatMoney(u.hourRate)} la hora{u.overtimeRate ? ` · ${formatMoney(u.overtimeRate)} la extra` : ''}</small></>}
                           {u.payMode === 'nomina' && <><br /><small className="muted">Nómina {u.payPeriod === 'quincenal' ? 'quincenal' : 'mensual'} · {formatMoney(u.salary)}</small></>}
                           {u.site && <><br /><small>{u.site.name}</small></>}
