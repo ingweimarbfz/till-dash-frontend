@@ -1357,7 +1357,8 @@ li.preparando .kds-item { background: var(--accent-50); }
 /* Mesa cobrada que falta limpiar */
 .lg.por_liberar { background: #5B8DEF; }
 .tbl-por_liberar { border-left-color: #5B8DEF; background: linear-gradient(0deg, rgba(91, 141, 239, .12), var(--surface) 70%); }
-.tbl-release { margin-top: auto; display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #5B8DEF; color: #fff; font-size: 12.5px; font-weight: 700; }
+.tbl-release { margin-top: auto; display: inline-flex; align-items: center; gap: 3px; align-self: flex-start; padding: 2px 8px; border-radius: 999px; background: #5B8DEF; color: #fff; font-size: 11.5px; font-weight: 600; line-height: 1.4; white-space: nowrap; }
+.tbl-release svg { font-size: 13px; flex: none; }
 
 /* Uso de las mesas en el dashboard */
 .usage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 18px; align-items: start; }
