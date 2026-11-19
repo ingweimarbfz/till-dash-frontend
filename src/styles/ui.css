@@ -1222,7 +1222,9 @@ li.preparando .kds-item { background: var(--accent-50); }
 .hour-bar small { font-size: 10px; color: var(--muted); }
 
 /* Llamados de mesa (avisos con sonido) */
-.call-toasts { position: fixed; bottom: 20px; left: calc(var(--sidebar-w) + 20px); z-index: 75; display: flex; flex-direction: column; gap: 10px; width: min(440px, calc(100vw - 32px)); }
+.call-dock { position: fixed; bottom: 20px; left: calc(var(--sidebar-w) + 20px); z-index: 75; display: flex; flex-direction: column; gap: 10px; width: min(440px, calc(100vw - 32px)); pointer-events: none; }
+.call-dock:empty { display: none; }
+.call-toasts { display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
 .call-toast { display: flex; gap: 8px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 12px; padding: 8px 6px 8px 10px; box-shadow: var(--shadow-lg); animation: up .2s ease; }
 .call-toast .grow { min-width: 0; }
 .call-toast strong { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1231,9 +1233,9 @@ li.preparando .kds-item { background: var(--accent-50); }
 .call-toast.more { font-size: 13px; justify-content: center; }
 .call-icon { width: 32px; height: 32px; border-radius: 10px; background: var(--accent-50); color: #B7791F; display: inline-flex; align-items: center; justify-content: center; font-size: 20px; flex: none; }
 .call-toast.cuenta .call-icon { background: var(--brand-50); color: var(--brand); }
-.app.sidebar-off .call-toasts { left: 20px; }
-@media (max-width: 1024px) { .call-toasts { left: 16px; } }
-@media (max-width: 640px) { .call-toasts { left: 16px; right: 16px; bottom: 16px; width: auto; } .call-toast strong { white-space: normal; } }
+.app.sidebar-off .call-dock { left: 20px; }
+@media (max-width: 1024px) { .call-dock { left: 16px; } }
+@media (max-width: 640px) { .call-dock { left: 16px; right: 16px; bottom: 16px; width: auto; } .call-toast strong { white-space: normal; } }
 
 /* Carta pública por QR */
 .menu-page { --menu-dark: #1F2933; min-height: 100vh; background: var(--gray-100); color: var(--ink); max-width: 720px; margin: 0 auto; padding-bottom: 40px; }
@@ -1433,6 +1435,9 @@ tr.voided td strong { text-decoration: line-through; font-weight: 500; }
 /* Aviso de pedido desde la mesa para el personal */
 .call-toast.pedido { border-left-color: var(--ok); align-items: flex-start; }
 .call-toast.pedido .call-icon { background: var(--ok-50); color: var(--ok); }
+.call-toast.cash { border-left-color: var(--ok); }
+.call-toast.cash .call-icon { background: var(--ok-50); color: var(--ok); }
+.delivery-cash { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--ok); font-weight: 600; font-size: 13px; }
 .call-items { margin: 4px 0 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--ink-2); }
 .call-items li { display: flex; justify-content: space-between; gap: 8px; }
 .menu-expired-icon { width: 64px; height: 64px; color: var(--brand); }

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsBike, MdRefresh, MdUndo, MdAccountBalanceWallet } from 'react-icons/md'
+import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsBike, MdRefresh, MdUndo, MdAccountBalanceWallet, MdPayments } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
-import { Badge, Card, Empty, Field, Kpi, PageHead, Spinner, useToast } from '../../components/ui'
+import { Badge, Card, Empty, Field, Kpi, Modal, PageHead, Spinner, useToast } from '../../components/ui'
+import { MoneyInput } from '../../components/forms'
+import { useSettings } from '../../context/SettingsContext'
 import { formatDateTime, formatMoney, minutesLabel } from '../../utils/format'
 import { since, useCan } from './common'
 import { FloatsCard } from './CourierFloats'
@@ -41,6 +43,56 @@ const deliveryActions = ({ user, status, courier, mustPayFirst, dispatchBlock })
   }
   return { undo: mine ? 'en_camino' : null }
 }
+const rxFigures = (total, baseFee, rxFee, rxAmount) => {
+  if (rxAmount === null || rxAmount === undefined) return {}
+  const due = Math.round(Number(total) - (Number(baseFee) || 0) + (rxFee === null || rxFee === undefined ? Number(baseFee) || 0 : Number(rxFee)))
+  return { received: Number(rxAmount), change: Math.max(0, Number(rxAmount) - due) }
+}
+// TD-015: dinero recibido. El domiciliario asignado avisa que el cliente le pagó en efectivo (si iba en camino,
+// también queda entregado) y al personal le sale el aviso para cobrarlo en caja.
+const cashState = ({ user, courier, status, cashPay, paid, cashReceivedAt, received, change }) => {
+  if (!cashPay || paid || status === 'por_despachar') return null
+  const mine = isCourier(user) && courier?.id === user.id
+  if (cashReceivedAt) return { reported: true, canUndo: mine, text: (mine ? `Avisaste que recibiste el dinero ${since(cashReceivedAt)}. Entrégalo en caja.` : `💵 ${courier?.name || 'El domiciliario'} recibió el dinero ${since(cashReceivedAt)}. Cóbralo en caja.`) + (received ? ` El cliente dio ${formatMoney(received)}${change > 0 ? `, cambio ${formatMoney(change)}` : ''}.` : '') }
+  return mine ? { report: true } : null
+}
+const cashToast = (d, kind, data) => (kind === 'undo' ? 'Aviso de dinero recibido deshecho' : `Listo: avisamos en caja que recibiste el dinero del ${d.number}${data?.delivered ? ' y quedó entregado' : ''}${data?.change ? `. Cambio: ${formatMoney(data.change)}` : ''}`)
+// El domiciliario registra el valor del domicilio y con cuánto pagó el cliente; ve el cambio que debe dar.
+// En caja, al cobrar, esos valores se precargan.
+const CashReceivedModal = ({ d, onClose, onDone }) => {
+  const { settings } = useSettings()
+  const baseFee = Number(d.deliveryFee) || 0
+  const [fee, setFee] = useState(baseFee || Number(settings.deliveryFeeDefault) || 0)
+  const due = Math.round(Number(d.total) - baseFee + (Number(fee) || 0))
+  const [received, setReceived] = useState(d.cashWith && d.cashWith >= due ? d.cashWith : '')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const given = received === '' ? due : Number(received)
+  const change = given - due
+  const save = async (e) => {
+    e.preventDefault()
+    if (change < 0) return setError(`El cliente debe pagar ${formatMoney(due)}.`)
+    setSaving(true); setError('')
+    try { const { data } = await api.post(`/domicilios/${d.id}/dinero-recibido`, { deliveryFee: Number(fee) || 0, received: given }); onDone(data) } catch (err) { setError(errorMessage(err)); setSaving(false) }
+  }
+  const quick = [...new Set([due, Math.ceil(due / 10000) * 10000, Math.ceil(due / 50000) * 50000, Math.ceil(due / 100000) * 100000])].filter((v) => v >= due).slice(0, 4)
+  return (
+    <Modal title={`Recibí el dinero · ${d.number}`} onClose={onClose} footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="cash-rx" className="btn btn-primary" disabled={saving || change < 0}>{saving ? <Spinner /> : <MdPayments />} Avisar en caja</button></>}>
+      <form id="cash-rx" className="stack" style={{ gap: 12 }} onSubmit={save}>
+        {error && <div className="alert bad">{error}</div>}
+        <Field label="Valor del domicilio" htmlFor="crf" hint="0 si no se le cobra el domicilio"><MoneyInput id="crf" value={fee} onChange={(v) => setFee(v === '' ? 0 : v)} /></Field>
+        <div className="delivery-money">
+          <div><span>Pedido</span><b>{formatMoney(Number(d.total) - baseFee)}</b></div>
+          <div><span>Domicilio</span><b>{formatMoney(Number(fee) || 0)}</b></div>
+          <div><span>Cobrar al cliente</span><b>{formatMoney(due)}</b></div>
+        </div>
+        <Field label="Dinero que te dio el cliente" htmlFor="crr"><MoneyInput id="crr" value={received} onChange={setReceived} placeholder={Number(due).toLocaleString('es-CO')} autoFocus /></Field>
+        <div className="chip-list">{quick.map((v) => <button key={v} type="button" className="pchip" onClick={() => setReceived(v)}>{formatMoney(v)}</button>)}</div>
+        <div className={`alert ${change < 0 ? 'bad' : 'ok'}`} style={{ margin: 0 }}>{change < 0 ? `Faltan ${formatMoney(-change)}.` : change > 0 ? <>Cambio para el cliente: <b>{formatMoney(change)}</b></> : 'Pago exacto, sin cambio.'}</div>
+      </form>
+    </Modal>
+  )
+}
 // Cambia el estado o el domiciliario de un domicilio y avisa.
 const useDeliveryAction = (load) => {
   const [toast, toastNode] = useToast()
@@ -48,7 +100,8 @@ const useDeliveryAction = (load) => {
   const onAction = async (d, body) => {
     setBusy(true)
     try {
-      if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast('Domiciliario asignado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
+      if (body.cash === 'done') toast(cashToast(d, 'report', body.result))
+      else if (body.cash === 'undo') { await api.post(`/domicilios/${d.id}/dinero-recibido/deshacer`); toast(cashToast(d, 'undo')) } else if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast('Domiciliario asignado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
       load()
     } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
   }
@@ -61,8 +114,11 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
   const { user } = useAuth()
   const city = data.origin.city
   const act = deliveryActions({ user, status: d.deliveryStatus, courier: d.courier, mustPayFirst: d.mustPayFirst, dispatchBlock: d.dispatchBlock })
+  const cash = cashState({ user, courier: d.courier, status: d.deliveryStatus, cashPay: d.cashPay, paid: d.paid, cashReceivedAt: d.cashReceivedAt, ...rxFigures(d.total, d.deliveryFee, d.cashReceivedFee, d.cashReceivedAmount) })
+  const [paying, setPaying] = useState(false)
   return (
     <li className={`delivery-card st-${d.deliveryStatus}`}>
+      {paying && <CashReceivedModal d={d} onClose={() => setPaying(false)} onDone={(r) => { setPaying(false); onAction(d, { cash: 'done', result: r }) }} />}
       <div className="row-between">
         <span><Link to={`/pedidos/${d.id}`}><strong>{d.number}</strong></Link> <Badge tone={TONE[d.deliveryStatus]}>{d.deliveryStatusLabel}</Badge></span>
         <small className="muted">{d.deliveryStatus === 'entregado' && d.minutes !== null ? `Entregado en ${minutesLabel(d.minutes)}` : d.deliveryStatus === 'en_camino' ? `Salió ${since(d.dispatchedAt)}` : `Pedido ${since(d.openedAt)}`}</small>
@@ -92,11 +148,17 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
         {act.undo && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAction(d, { status: act.undo })} disabled={busy} title="Deshacer"><MdUndo /></button>}
         <a href={mapUrl(d.address, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
         {act.payFirst && <Link to={`/pedidos/${d.id}`} className="btn btn-sm" title="Se paga antes de enviar">Cobrar antes de enviar</Link>}
-        {act.next && <button type="button" className="btn btn-sm btn-primary" onClick={() => onAction(d, { status: act.next.status })} disabled={busy}>{act.next.icon} {act.next.label}</button>}
+        {act.next && <button type="button" className={`btn btn-sm${cash?.report ? '' : ' btn-primary'}`} onClick={() => onAction(d, { status: act.next.status })} disabled={busy}>{act.next.icon} {act.next.label}</button>}
+        {cash?.report && <button type="button" className="btn btn-sm btn-primary" onClick={() => setPaying(true)} disabled={busy} title="Avisa en caja que el cliente te pagó en efectivo"><MdPayments /> Recibí el dinero</button>}
         {act.blocked && <button type="button" className="btn btn-sm" disabled title={act.blocked}><MdDirectionsBike /> {isCourier(user) ? 'Salí con el pedido' : 'Salió con el pedido'}</button>}
       </div>
       {act.blocked && <small className="text-warn">{act.blocked}</small>}
-      {act.waiting && <small className="muted">{act.waiting}</small>}
+      {act.waiting && !cash?.reported && <small className="muted">{act.waiting}</small>}
+      {cash?.reported && (
+        <div className="delivery-cash"><MdPayments /> <span className="grow">{cash.text}</span>
+          {cash.canUndo && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAction(d, { cash: 'undo' })} disabled={busy} title="Deshacer el aviso de dinero recibido"><MdUndo /></button>}
+        </div>
+      )}
     </li>
   )
 }
@@ -262,8 +324,11 @@ export const CourierHome = () => {
   const { onAction, busy, toastNode } = useDeliveryAction(load)
   if (!data) return null
   const t = data.totals
-  // Primero los que ya van en camino (para marcarlos entregados), luego los que están por salir.
-  const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado').sort((a, b) => (a.deliveryStatus === 'en_camino' ? 0 : 1) - (b.deliveryStatus === 'en_camino' ? 0 : 1))
+  // Primero los entregados que falta avisar el dinero, luego los que van en camino y al final los que están por salir.
+  // TD-015: un domicilio entregado en efectivo sigue aquí hasta que avise que recibió el dinero o se cobre.
+  const cashPending = (d) => d.deliveryStatus === 'entregado' && d.cashPay && !d.paid && !d.cashReceivedAt
+  const rank = (d) => (cashPending(d) ? 0 : d.deliveryStatus === 'en_camino' ? 1 : 2)
+  const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado' || cashPending(d)).sort((a, b) => rank(a) - rank(b))
   return (<>
     <Card title="Mis domicilios por llevar" icon={<MdDeliveryDining />} subtitle={active.length ? `${t.onTheWay} en camino · ${t.pending} por despachar` : null} actions={<Link to="/domicilios" className="btn btn-sm">Ver todos mis domicilios</Link>}>
       {toastNode}
@@ -293,6 +358,8 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
   const st = order.deliveryStatus || 'por_despachar'
   const mustPayFirst = Boolean(order.deliveryPayMethod && order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst)
   const flow = deliveryActions({ user, status: st, courier: order.courier, mustPayFirst, dispatchBlock: order.dispatchBlock })
+  const cash = cashState({ user, courier: order.courier, status: st, cashPay: !order.deliveryPayMethod || order.deliveryPayMethod === 'efectivo', paid: order.status !== 'abierto', cashReceivedAt: order.cashReceivedAt, ...rxFigures(order.total, order.deliveryFee, order.cashReceivedFee, order.cashReceivedAmount) })
+  const [paying, setPaying] = useState(false)
   const act = async (url, body, msg) => {
     setBusy(true)
     try { await api.post(url, body); toast(msg); onChanged() } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
@@ -301,6 +368,7 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
     <Card title="Domicilio" icon={<MdDeliveryDining />} actions={<Badge tone={TONE[st]}>{STATUS_LABEL[st]}</Badge>}>
       <div className="stack" style={{ gap: 10 }}>
         {toastNode}
+        {paying && <CashReceivedModal d={{ id: order.id, number: order.number, total: order.total, deliveryFee: order.deliveryFee, cashWith: order.deliveryCashWith }} onClose={() => setPaying(false)} onDone={(r) => { setPaying(false); toast(cashToast(order, 'report', r)); onChanged() }} />}
         <a className="delivery-address" href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer"><MdPlace /> <span>{order.customerAddress}</span></a>
         {order.customerPhone && <a href={`tel:${order.customerPhone}`} className="muted"><MdPhone /> {order.customerName ? `${order.customerName} · ` : ''}{order.customerPhone}</a>}
         {canAssign ? (
@@ -315,11 +383,17 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
         <div className="row wrap" style={{ gap: 8 }}>
           <a href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
           {flow.undo && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.undo }, 'Estado actualizado')} title="Deshacer"><MdUndo /></button>}
-          {flow.next && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.next.status }, flow.next.status === 'entregado' ? 'Entregado' : 'En camino')}>{flow.next.icon} {flow.next.label}</button>}
+          {flow.next && <button type="button" className={`btn btn-sm${cash?.report ? '' : ' btn-primary'}`} disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.next.status }, flow.next.status === 'entregado' ? 'Entregado' : 'En camino')}>{flow.next.icon} {flow.next.label}</button>}
+          {cash?.report && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => setPaying(true)}><MdPayments /> Recibí el dinero</button>}
           {flow.blocked && <button type="button" className="btn btn-sm" disabled title={flow.blocked}><MdDirectionsBike /> Salió</button>}
         </div>
+        {cash?.reported && (
+          <div className="delivery-cash"><MdPayments /> <span className="grow">{cash.text}</span>
+            {cash.canUndo && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => act(`/domicilios/${order.id}/dinero-recibido/deshacer`, {}, 'Aviso de dinero recibido deshecho')} title="Deshacer el aviso de dinero recibido"><MdUndo /></button>}
+          </div>
+        )}
         {flow.blocked && <small className="text-warn">{flow.blocked}</small>}
-        {flow.waiting && <small className="muted">{flow.waiting}</small>}
+        {flow.waiting && !cash?.reported && <small className="muted">{flow.waiting}</small>}
       </div>
     </Card>
   )
