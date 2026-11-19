@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MdAdd, MdEdit, MdSearch, MdStorefront, MdPlace, MdPhone, MdDeliveryDining, MdShoppingBag, MdRequestQuote, MdDownload, MdWhatsapp } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Kpi, Modal, PageHead, Spinner, useToast } from '../../components/ui'
-import { MoneyInput } from '../../components/forms'
+import { MoneyInput, siteNamesOf, useSites } from '../../components/forms'
 import { formatDate, formatDateTime, formatMoney } from '../../utils/format'
 import { download } from '../../utils/range'
 import { usePlan } from '../../context/PlanContext'
@@ -23,6 +23,9 @@ const CustomerForm = ({ initial, zones, onClose, onSaved }) => {
   const { user } = useAuth()
   const admin = ADMIN.includes(user.role)
   const [f, setF] = useState(() => (initial ? Object.fromEntries(Object.keys(EMPTY).map((k) => [k, initial[k] ?? EMPTY[k]])) : EMPTY))
+  // TD-031: el administrador elige si el cliente es de todas las sucursales o de una.
+  const sites = useSites()
+  const [siteId, setSiteId] = useState(initial ? String(initial.siteId || '') : '')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
@@ -32,6 +35,7 @@ const CustomerForm = ({ initial, zones, onClose, onSaved }) => {
     setSaving(true)
     const body = { ...f, deliveryFee: f.deliveryFee === '' ? null : Number(f.deliveryFee), creditDays: f.creditDays === '' ? null : Number(f.creditDays), payMethod: f.payMethod || null }
     if (!admin || !initial) delete body.active
+    if (admin && sites.length > 1) body.siteId = Number(siteId) || null
     try {
       const { data } = initial ? await api.put(`/clientes/${initial.id}`, body) : await api.post('/clientes', body)
       onSaved(data, !initial)
@@ -57,6 +61,9 @@ const CustomerForm = ({ initial, zones, onClose, onSaved }) => {
         <Field label="Valor del domicilio" htmlFor="cf" hint="Vacío: el de Configuración"><MoneyInput id="cf" value={f.deliveryFee} onChange={(v) => setF((x) => ({ ...x, deliveryFee: v }))} placeholder="Por defecto" /></Field>
         <Field label="Forma de pago habitual" htmlFor="cpm"><select id="cpm" value={f.payMethod} onChange={set('payMethod')}>{PAY.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field label="Plazo de crédito (días)" htmlFor="ccd" hint="Fecha de pago de sus cuentas por cobrar"><input id="ccd" type="number" min="0" max="365" value={f.creditDays} onChange={set('creditDays')} placeholder="Sin crédito" /></Field>
+        {admin && sites.length > 1 && <div className="span-2"><Field label="Sucursal" htmlFor="csite" hint="Con &quot;Todas&quot;, el cliente aparece y se le puede vender en cualquier sucursal.">
+          <select id="csite" value={siteId} onChange={(e) => setSiteId(e.target.value)}><option value="">Todas las sucursales</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
+        </Field></div>}
         <div className="span-2"><Field label="Notas" htmlFor="cno"><textarea id="cno" rows={2} value={f.notes} onChange={set('notes')} placeholder="Horario de recibo, indicaciones para llegar…" /></Field></div>
         {admin && initial && <label className="check span-2"><input type="checkbox" checked={f.active} onChange={(e) => setF((x) => ({ ...x, active: e.target.checked }))} /> Cliente activo</label>}
         {error && <div className="alert bad span-2">{error}</div>}
@@ -144,6 +151,7 @@ const CustomerDetail = ({ id, onClose, onEdit, onOrder }) => {
 // ---------- Directorio de clientes ----------
 const CustomersPage = () => {
   const navigate = useNavigate()
+  const sites = useSites()
   const can = useCan()
   const { user } = useAuth()
   const { distributor } = usePlan()
@@ -205,7 +213,7 @@ const CustomersPage = () => {
             <thead><tr><th>Cliente</th><th className="hide-sm">Celular</th><th className="hide-md">Dirección</th><th className="num">Compras</th><th className="num hide-sm">Última</th><th className="num">Debe</th></tr></thead>
             <tbody>{rows.map((c) => (
               <tr key={c.id} onClick={() => setDetail(c.id)} style={{ cursor: 'pointer' }}>
-                <td><strong>{c.name}</strong>{!c.active && <Badge tone="muted">Inactivo</Badge>}<small className="block muted">{[c.kindLabel, c.zone].filter(Boolean).join(' · ')}</small></td>
+                <td><strong>{c.name}</strong>{!c.active && <Badge tone="muted">Inactivo</Badge>}<small className="block muted">{[c.kindLabel, c.zone, sites.length > 1 && (c.siteId ? siteNamesOf(sites, [c.siteId]) : 'Todas las sucursales')].filter(Boolean).join(' · ')}</small></td>
                 <td className="hide-sm">{c.phone ? <span className="row" style={{ gap: 4 }}><MdPhone /> {c.phone}</span> : '—'}</td>
                 <td className="hide-md"><small>{[c.address, c.neighborhood].filter(Boolean).join(', ') || '—'}</small></td>
                 <td className="num money">{formatMoney(c.bought || 0)}<small className="block muted">{c.orders || 0} pedidos</small></td>
