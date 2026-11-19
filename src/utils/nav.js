@@ -1,7 +1,7 @@
 import {
   MdDashboard, MdManageAccounts, MdSettings, MdMenuBook, MdPerson, MdPlace, MdPalette,
   MdTableRestaurant, MdReceiptLong, MdPointOfSale, MdInventory2, MdCategory, MdLocalOffer, MdBarChart, MdAccountBalance, MdQrCode2, MdNotificationsActive, MdRestaurantMenu,
-  MdSoupKitchen, MdRequestQuote, MdReportProblem, MdAutoStories, MdLocalShipping, MdDeliveryDining, MdStorefront
+  MdSoupKitchen, MdRequestQuote, MdPrint, MdReportProblem, MdAutoStories, MdLocalShipping, MdDeliveryDining, MdStorefront
 } from 'react-icons/md'
 
 export const ROLE_LABELS = { superadmin: 'Super administrador', admin: 'Administrador', empleado: 'Empleado', cliente: 'Cliente' }
@@ -23,6 +23,7 @@ const OPERATION = {
     { to: '/comandas', label: 'Comandas', icon: MdSoupKitchen, positions: ['cocina', 'bartender', 'barista'] },
     { to: '/caja', label: 'Caja', icon: MdPointOfSale, positions: ['cajero'] },
     { to: '/cuentas-por-cobrar', label: 'Cuentas por cobrar', icon: MdRequestQuote, positions: ['cajero'] },
+    { to: '/impresora', label: 'Impresora', icon: MdPrint, positions: ['cajero'] },
     { to: '/incidentes', label: 'Incidentes', icon: MdReportProblem }
   ]
 }
