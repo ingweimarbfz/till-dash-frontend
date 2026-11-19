@@ -216,8 +216,8 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
           </Card>
 
           {!open && o.payments?.length > 0 && (
-            <Card title="Pagos" flush>
-              <ul className="list padded">{o.payments.map((p) => <li key={p.id}><span><strong>{PAY_METHODS[p.method]}</strong> <small>{[p.reference, p.change ? `cambio ${formatMoney(p.change)}` : null, p.user, formatDateTime(p.createdAt)].filter(Boolean).join(' · ')}</small></span><span className="money">{formatMoney(p.amount)}</span></li>)}</ul>
+            <Card title={o.split ? `Pagos · cuenta dividida ${o.split.label?.toLowerCase() || ''} entre ${o.split.persons?.length} personas` : 'Pagos'} flush>
+              <ul className="list padded">{o.payments.map((p) => <li key={p.id}><span><strong>{p.payer ? `${p.payer} · ` : ''}{PAY_METHODS[p.method]}</strong> <small>{[p.reference, p.change ? `cambio ${formatMoney(p.change)}` : null, p.user, formatDateTime(p.createdAt)].filter(Boolean).join(' · ')}</small></span><span className="money">{formatMoney(p.amount)}</span></li>)}</ul>
               {o.receivables?.map((r) => <div key={r.id} className="alert warn" style={{ margin: 12 }}>Cuenta por cobrar {r.number} a {r.customerName}: debe {formatMoney(r.amount - r.paid)}</div>)}
             </Card>
           )}

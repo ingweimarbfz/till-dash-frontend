@@ -55,3 +55,30 @@ ${tip > 0 ? '<p>La propina es voluntaria y fue aceptada por el cliente.</p>' : '
 ${settings.receiptFooter ? `<p>${esc(settings.receiptFooter)}</p>` : ''}<p>Este documento no es una factura.</p>`
   return printTicket({ title: `${kind === 'precuenta' ? 'Precuenta' : 'Cuenta'} ${o.number}`, body })
 }
+
+// Cuenta dividida (TD-014): un tiquete por persona con su parte (y sus productos si se dividió por productos).
+// persons: [{ name, amount, items?: [{ itemId, quantity }], consumption?, pays?: [{ method, amount }] }]
+export const splitTickets = ({ o, settings, persons, mode, kind = 'precuenta', tip = 0, payLabels = {} }) => {
+  const byId = new Map((o.items || []).map((i) => [i.id, i]))
+  // Cantidades compartidas: 1/2, 1/3, 2/3… (o con coma decimal si no es una fracción sencilla).
+  const qty = (q) => {
+    if (Number.isInteger(q)) return q
+    for (let d = 2; d <= 12; d++) if (Math.abs(q * d - Math.round(q * d)) < 0.01) return `${Math.round(q * d)}/${d}`
+    return Number(q).toFixed(2).replace(/\.?0+$/, '').replace('.', ',')
+  }
+  const head = kind === 'precuenta' ? 'PRECUENTA' : 'CUENTA PAGADA'
+  const body = persons.map((p, n) => {
+    const items = mode === 'productos' ? (p.items || []).map((a) => {
+      const i = byId.get(a.itemId)
+      return i ? line(`${qty(a.quantity)} ${esc(i.name)}${i.courtesy ? ' (cortesía)' : ''}`, i.courtesy ? '$0' : formatMoney(Math.round(a.quantity * i.unitPrice))) : ''
+    }).join('') : ''
+    const pays = kind === 'precuenta' ? '' : (p.pays || []).map((x) => line(esc(payLabels[x.method] || x.method), formatMoney(Math.round(Number(x.amount) || 0)))).join('')
+    return `<div style="${n ? 'page-break-before: always; margin-top: 18px;' : ''}"><h3>${esc(settings.businessName)}</h3><p>${head} · ${esc(o.number)}</p>
+<p>${esc(o.table || o.typeLabel || '')} · ${new Date().toLocaleString('es-CO')}</p><p><b>${esc(p.name)}</b> · ${n + 1} de ${persons.length}</p><hr/>
+${items ? `<table>${items}</table><hr/>` : `<p>Cuenta total ${formatMoney(persons.reduce((a, x) => a + x.amount, 0))} dividida ${mode === 'iguales' ? `en ${persons.length} partes iguales` : 'por valor'}</p><hr/>`}
+<table>${mode === 'productos' && p.consumption !== undefined && p.consumption !== p.amount ? line('Su consumo', formatMoney(p.consumption)) : ''}
+${line(tip > 0 ? 'A pagar (incluye propina)' : 'A pagar', formatMoney(p.amount), 'big')}${pays}</table><hr/>
+${settings.receiptFooter ? `<p>${esc(settings.receiptFooter)}</p>` : ''}<p>Este documento no es una factura.</p></div>`
+  }).join('')
+  return printTicket({ title: `Cuenta dividida ${o.number}`, body })
+}
