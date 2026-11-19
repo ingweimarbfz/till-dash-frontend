@@ -265,7 +265,7 @@ const UsersPage = () => {
                     {g.title && sites.length > 1 && <tr className="group-row"><th colSpan={6}>{g.title} <small className="muted">· {g.rows.length} usuario{g.rows.length === 1 ? '' : 's'}</small></th></tr>}
                     {g.rows.map((u) => (
                       <tr key={u.id}>
-                        <td><div className="person"><Avatar user={u} size="sm" /><div><strong>{u.fullName}</strong><small>{u.username} · {u.identification}</small></div></div></td>
+                        <td><div className="person"><Avatar user={u} size="sm" /><div><strong>{u.fullName}</strong>{(u.positions || []).includes('domiciliario') && <> <Badge tone="info">🛵 Domiciliario{u.courierExternal ? ' externo' : ''}</Badge></>}<small>{u.username} · {u.identification}</small></div></div></td>
                         <td>
                           <span className="badges">{(u.profiles || [u.role]).map((r) => <Badge key={r} tone={ROLE_TONE[r]}>{ROLE_LABELS[r]}</Badge>)}</span>
                           {!!u.positions?.length && <><br /><small>{u.positions.map((p) => positionLabel(p, distributor)).join(', ')}</small></>}
