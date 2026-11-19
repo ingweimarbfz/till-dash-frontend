@@ -267,7 +267,7 @@ const AccountTab = ({ courierId, setCourierId }) => {
       {!data ? <Spinner /> : <>
         <div className="kpis">
           <Kpi label="Domicilios" value={t.deliveries} note={`${formatMoney(t.fees)} en domicilios cobrados`} icon={MdDeliveryDining} tone="brand" />
-          <Kpi label={mine ? 'Me tocó' : 'Le tocó'} value={formatMoney(t.earned)} note={`${formatMoney(t.share)} domicilios (${shareLabel(data.rule).toLowerCase()}) + ${formatMoney(t.tips)} propinas${t.tipsPaid ? ` · ${formatMoney(t.tipsPaid)} de propinas pagadas` : ''}. Las propinas se pagan en Propinas.`} icon={MdAccountBalanceWallet} tone="dark" />
+          <Kpi label={mine ? 'Me tocó' : 'Le tocó'} value={formatMoney(t.earned)} note={`${data.courier.byShift ? 'Se le paga por jornada como empleado: los domicilios quedan para el negocio' : `${formatMoney(t.share)} domicilios (${shareLabel(data.rule).toLowerCase()})`} + ${formatMoney(t.tips)} propinas${t.tipsPaid ? ` · ${formatMoney(t.tipsPaid)} de propinas pagadas` : ''}. Las propinas se pagan en Propinas.`} icon={MdAccountBalanceWallet} tone="dark" />
           <Kpi label="Pagado en los cierres de caja" value={formatMoney(t.paid)} note={`${data.payouts.length} pago${data.payouts.length === 1 ? '' : 's'}`} />
           <Kpi label="Pendiente por pagar" value={formatMoney(t.pending)} note="Se paga al cerrar la caja del turno" tone={t.pending ? 'warn' : ''} />
         </div>
