@@ -617,7 +617,7 @@ small.visit-note { color: var(--ink-2) !important; display: flex !important; ali
 /* KU-018 · Notificaciones por Telegram */
 .muted { color: var(--muted); }
 .row-between.wrap, .row-end.wrap { flex-wrap: wrap; }
-.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13.5px; color: var(--text); }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13.5px; color: var(--ink); }
 .steps code { background: var(--gray-100); padding: 1px 6px; border-radius: 6px; font-size: 12.5px; }
 .tg-bot { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .tg-bot > div { display: grid; min-width: 0; }
@@ -655,11 +655,11 @@ small.visit-note { color: var(--ink-2) !important; display: flex !important; ali
 .promo-preview small { color: var(--muted); }
 .emoji-pick { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .emoji-pick button { width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--line); background: #fff; font-size: 19px; cursor: pointer; }
-.emoji-pick button.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--text) inset; }
+.emoji-pick button.on { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; }
 .emoji-pick .emoji-free { width: 70px; text-align: center; }
 .day-pick { display: flex; gap: 6px; flex-wrap: wrap; }
 .day-pick button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: #fff; font-weight: 700; cursor: pointer; }
-.day-pick button.on { background: var(--text); color: #fff; border-color: var(--text); }
+.day-pick button.on { background: var(--black); color: var(--white); border-color: var(--black); }
 .promo-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .promo-card { display: grid; gap: 6px; align-content: start; padding: 16px; background: #fff; border: 1px solid var(--line); border-top: 4px solid var(--promo, #111); border-radius: 14px; }
 .promo-card.vencida, .promo-card.inactiva { opacity: .6; }
@@ -675,7 +675,7 @@ small.visit-note { color: var(--ink-2) !important; display: flex !important; ali
 .pdp-ribbon { position: absolute; top: 14px; left: 14px; }
 .pdp-thumbs { display: flex; gap: 10px; flex-wrap: wrap; }
 .pdp-thumbs button { width: 74px; height: 74px; padding: 0; border-radius: 10px; border: 2px solid transparent; background: #F4F4F5; overflow: hidden; cursor: pointer; }
-.pdp-thumbs button.on { border-color: var(--text); }
+.pdp-thumbs button.on { border-color: var(--ink); }
 .pdp-thumbs img { width: 100%; height: 100%; object-fit: cover; }
 .pdp-info { display: grid; gap: 14px; align-content: start; min-width: 0; }
 .pdp-info h1 { margin: 0; font-size: 28px; line-height: 1.15; letter-spacing: -.02em; overflow-wrap: anywhere; }
@@ -686,7 +686,7 @@ small.visit-note { color: var(--ink-2) !important; display: flex !important; ali
 .pdp-stock { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .pdp-info .btn-primary { justify-self: start; }
 .pdp-desc h3 { margin: 0 0 6px; font-size: 14px; }
-.pdp-desc p { margin: 0; white-space: pre-line; color: var(--text); line-height: 1.5; }
+.pdp-desc p { margin: 0; white-space: pre-line; color: var(--ink); line-height: 1.5; }
 .pdp-upcoming { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 .pdp-upcoming li { display: flex; gap: 10px; align-items: flex-start; }
 .pdp-upcoming li > div { display: grid; gap: 2px; min-width: 0; }
@@ -1002,7 +1002,7 @@ input:invalid:not(:placeholder-shown):not(:focus) { border-color: var(--bad); }
 [data-theme="dark"] .badge.warn { color: #F6C46B; }
 [data-theme="dark"] .badge.bad { color: #F29B9B; }
 [data-theme="dark"] .badge.brand, [data-theme="dark"] .badge.ok, [data-theme="dark"] .kpi.brand .kpi-icon { color: color-mix(in srgb, var(--brand) 55%, #FFFFFF); }
-[data-theme="dark"] .btn.on, [data-theme="dark"] .pchip.on { background: var(--ink); color: #12171C; border-color: var(--ink); }
+[data-theme="dark"] .btn.on, [data-theme="dark"] .pchip.on, [data-theme="dark"] .day-pick button.on { background: var(--ink); color: #12171C; border-color: var(--ink); }
 [data-theme="dark"] .kpi.dark { border-color: var(--line); }
 [data-theme="dark"] .toast { background: #EEF1F4; color: #1F2933; }
 [data-theme="dark"] .map-loading { background: rgba(18, 23, 28, .6); }
