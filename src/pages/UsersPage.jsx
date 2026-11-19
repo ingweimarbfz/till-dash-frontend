@@ -46,6 +46,8 @@ const UserForm = ({ initial, onClose, onSaved }) => {
   const profiles = profilesOf(form)
   const isEmployee = profiles.includes('empleado')
   const isCourier = isEmployee && form.positions.includes('domiciliario')
+  // TD-026: el domiciliario externo solo cobra por domicilios: sin jornada, turno ni nómina.
+  const external = isCourier && Boolean(form.courierExternal)
   // Forma de pago y permiso de pagos (TD-021): solo superadmin o admin con el permiso.
   const canPay = Boolean(me.canManagePay)
   const kinds = KINDS.filter(([k]) => k !== 'superadmin' || me.role === 'superadmin')
@@ -56,16 +58,16 @@ const UserForm = ({ initial, onClose, onSaved }) => {
     const errs = formErrors({ identification: ['doc', form.identification, true], name: ['name', form.name, true], lastName: ['name', form.lastName], username: ['username', form.username, true], phone: ['phone', form.phone], email: ['email', form.email] })
     if (isEmployee && !form.positions.length) errs.push('Elige al menos un cargo (vendedor o mesero, cajero, domiciliario…).')
     if (form.password && form.password.length < 8) errs.push('La contraseña debe tener al menos 8 caracteres.')
-    if (canPay && isEmployee && form.payMode === 'turno' && !(Number(form.hourRate) > 0)) errs.push('Escribe el valor de la hora para pagarle por turnos.')
-    if (canPay && isCourier && form.courierPay === 'jornada' && form.payMode === 'ninguno') errs.push('Al domiciliario por jornada elígele pago por turno o por nómina.')
-    if (canPay && isEmployee && form.payMode === 'nomina' && !(Number(form.salary) > 0)) errs.push('Escribe el salario de la quincena o del mes.')
+    if (canPay && isEmployee && !external && form.payMode === 'turno' && !(Number(form.hourRate) > 0)) errs.push('Escribe el valor de la hora para pagarle por turnos.')
+    if (canPay && isCourier && !external && form.courierPay === 'jornada' && form.payMode === 'ninguno') errs.push('Al domiciliario por jornada elígele pago por turno o por nómina.')
+    if (canPay && isEmployee && !external && form.payMode === 'nomina' && !(Number(form.salary) > 0)) errs.push('Escribe el salario de la quincena o del mes.')
     if (isCourier) errs.push(...vehicleErrors(form))
     if (errs.length) return setError(errs.join(' '))
     setSaving(true)
     try {
       const { kind, alsoAdmin, alsoEmployee, payMode, hourRate, overtimeRate, salary, payPeriod, canManagePay, courierPay, courierFloat, courierExternal, vehicleType, vehicleHasPlate, vehiclePlate, ...rest } = form
       const body = { ...rest, role: profiles[0], profiles, positions: isEmployee ? form.positions : [], ...(isCourier ? courierBody(form) : {}) }
-      if (canPay) Object.assign(body, { payMode: isEmployee ? payMode : 'ninguno', hourRate: Number(hourRate) || 0, overtimeRate: Number(overtimeRate) || 0, salary: Number(salary) || 0, payPeriod, courierPay: isCourier ? courierPay : 'domicilios' })
+      if (canPay) Object.assign(body, { payMode: isEmployee && !external ? payMode : 'ninguno', hourRate: Number(hourRate) || 0, overtimeRate: Number(overtimeRate) || 0, salary: Number(salary) || 0, payPeriod, courierPay: isCourier && !external ? courierPay : 'domicilios' })
       if (me.role === 'superadmin') body.canManagePay = profiles[0] === 'admin' && canManagePay
       const { data } = editing ? await api.put(`/usuarios/${initial.id}`, body) : await api.post('/usuarios', body)
       onSaved(data, editing)
@@ -117,7 +119,13 @@ const UserForm = ({ initial, onClose, onSaved }) => {
             <span>Puede ver y gestionar los pagos al personal<small className="block muted">Forma de pago y valores de cada empleado, turnos, domicilios pendientes y nómina. Las propinas no dependen de este permiso.</small></span>
           </label>
         )}
-        {canPay && isEmployee && (
+        {canPay && external && (
+          <div className="span-2 profile-checks pay-config">
+            <span className="profile-checks-title">¿Cómo se le paga?</span>
+            <small className="hint" style={{ gridColumn: '1 / -1' }}>Por ser externo, solo se le paga por domicilios: su parte del valor de cada uno, con el porcentaje de Configuración → Domicilios. No tiene pago por jornada, turno ni nómina.</small>
+          </div>
+        )}
+        {canPay && isEmployee && !external && (
           <div className="span-2 profile-checks pay-config">
             {isCourier && <>
               <span className="profile-checks-title">Como domiciliario, ¿cómo se le paga?</span>
