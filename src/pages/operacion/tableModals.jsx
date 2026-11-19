@@ -27,7 +27,7 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
   const suggestedFee = Number(settings.deliveryFeeDefault) || 0
   const [fee, setFee] = useState({ on: suggestedFee > 0, value: suggestedFee || '' })
   // Cómo paga el cliente el domicilio: efectivo al domiciliario u otro medio (antes de enviar o al llegar, según Configuración).
-  const [pay, setPay] = useState({ method: '', cashWith: '' })
+  const [pay, setPay] = useState({ method: '' })
   const payFirst = (settings.deliveryTransferTiming || 'antes') === 'antes'
   const [f, setF] = useState({ alias: '', guests: table ? String(Math.min(table.seats, 2)) : '', customerName: '', customerPhone: '', customerAddress: '', note: '' })
   const [error, setError] = useState('')
@@ -48,7 +48,7 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
     if (type === 'domicilio' && !pay.method) return setError('Pregúntale al cliente cómo va a pagar.')
     setSaving(true)
     try {
-      const { data } = await api.post('/pedidos', { type, tableId: table?.id, siteId, alias: f.alias, guests: Number(f.guests) || undefined, customerName: f.customerName, customerPhone: f.customerPhone, customerAddress: f.customerAddress, note: f.note, customerId: cust?.id, saveCustomer: withCustomers && !cust && saveCustomer && Boolean(f.customerName.trim()), deliveryFee: type === 'domicilio' && fee.on ? Number(fee.value) : undefined, deliveryPayMethod: type === 'domicilio' ? pay.method : undefined, deliveryCashWith: type === 'domicilio' && pay.method === 'efectivo' && pay.cashWith !== '' ? Number(pay.cashWith) : undefined })
+      const { data } = await api.post('/pedidos', { type, tableId: table?.id, siteId, alias: f.alias, guests: Number(f.guests) || undefined, customerName: f.customerName, customerPhone: f.customerPhone, customerAddress: f.customerAddress, note: f.note, customerId: cust?.id, saveCustomer: withCustomers && !cust && saveCustomer && Boolean(f.customerName.trim()), deliveryFee: type === 'domicilio' && fee.on ? Number(fee.value) : undefined, deliveryPayMethod: type === 'domicilio' ? pay.method : undefined })
       onOpened(data)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
@@ -73,7 +73,7 @@ export const OpenOrderModal = ({ table, type = 'mesa', siteId, onClose, onOpened
               {DELIVERY_PAY.map(([k, l]) => <button key={k} type="button" className={`btn btn-sm${pay.method === k ? ' on' : ''}`} onClick={() => setPay((x) => ({ ...x, method: k }))}>{l}</button>)}
             </div>
           </Field>
-          {pay.method === 'efectivo' && <div className="fee-row" style={{ marginTop: 6 }}><small className="muted">Le paga al domiciliario cuando llega. ¿Con cuánto paga? (para llevar el cambio)</small><div style={{ maxWidth: 180 }}><MoneyInput value={pay.cashWith} onChange={(v) => setPay((x) => ({ ...x, cashWith: v }))} aria-label="Paga con" placeholder="Opcional" /></div></div>}
+          {pay.method === 'efectivo' && <small className="muted" style={{ display: 'block', marginTop: 6 }}>Le paga al domiciliario cuando llega. Con cuánto paga (para llevar el cambio) se anota en el pedido, cuando ya se sepa el total.</small>}
           {pay.method && pay.method !== 'efectivo' && <div className={`alert ${payFirst ? 'warn' : ''}`} style={{ marginTop: 6 }}>{payFirst ? 'Se cobra antes de enviar: pídele la transferencia, cóbralo en caja y después despacha el domicilio.' : 'El cliente paga cuando le llega el pedido. El domiciliario confirma el pago al entregar.'}</div>}
         </div>}
         {type === 'domicilio' && <div className="span-2 fee-row">
