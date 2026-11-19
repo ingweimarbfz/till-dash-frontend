@@ -419,7 +419,7 @@ const Accounts = ({ range, rangeNode, version, onPick }) => {
       </div>
       <div className="grid grid-2">
         <Card title="Gasto por mes" subtitle="Pagos desde cuentas y subcuentas, últimos 6 meses"><Bars data={monthly} ariaLabel="Gasto por mes" /></Card>
-        <Card title="¿En qué se va el dinero?" subtitle="Pagos por categoría en el rango">{r.byCategory.length ? <Share rows={r.byCategory} value="total" label="label" /> : <small className="muted">Sin pagos en este rango.</small>}</Card>
+        <Card title="¿En qué se va el dinero?" subtitle="Todos los gastos del rango por categoría: cuentas, caja, banco y socios">{(r.allByCategory || r.byCategory).length ? <Share rows={r.allByCategory || r.byCategory} value="total" label="label" /> : <small className="muted">Sin gastos en este rango.</small>}</Card>
       </div>
       <Card title="Cuentas y subcuentas" subtitle="Toca una para ver sus movimientos" flush>
         <div className="table-wrap"><table className="table hover">
