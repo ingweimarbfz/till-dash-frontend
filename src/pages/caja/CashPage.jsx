@@ -120,8 +120,12 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
       setShifts(Object.fromEntries(data.employees.filter((x) => x.worked).map((x) => [x.id, { hours: data.hours, amount: Math.round(data.hours * x.hourRate), now: true }])))
     }).catch(() => setCrew({ hours: 0, employees: [] }))
   }, [session.id])
-  const toggleShift = (x) => setShifts((t) => { const n = { ...t }; if (n[x.id]) delete n[x.id]; else n[x.id] = { hours: crew.hours, amount: Math.round(crew.hours * x.hourRate), now: true }; return n })
-  const setHours = (x, h) => setShifts((t) => ({ ...t, [x.id]: { ...t[x.id], hours: h, amount: Math.round((Number(String(h).replace(',', '.')) || 0) * x.hourRate) } }))
+  // Por horas: horas × valor de la hora + horas extra × valor de la hora extra. Valor fijo: se escribe el valor.
+  const num = (v) => Number(String(v ?? '').replace(',', '.')) || 0
+  const shiftAmount = (x, v) => (v.fixed ? v.amount : Math.round(num(v.hours) * x.hourRate + num(v.extra) * (x.overtimeRate || x.hourRate)))
+  const newShift = (x) => ({ hours: crew.hours, extra: '', fixed: false, amount: Math.round(crew.hours * x.hourRate), now: true })
+  const toggleShift = (x) => setShifts((t) => { const n = { ...t }; if (n[x.id]) delete n[x.id]; else n[x.id] = newShift(x); return n })
+  const patchShift = (x, patch) => setShifts((t) => { const v = { ...t[x.id], ...patch }; return { ...t, [x.id]: { ...v, amount: shiftAmount(x, v) } } })
   const staffNow = Object.values(shifts).filter((v) => v.now).reduce((a, v) => a + (Number(v.amount) || 0), 0)
   const staffLater = Object.values(shifts).filter((v) => !v.now).reduce((a, v) => a + (Number(v.amount) || 0), 0)
   const crewShown = crew ? crew.employees.filter((x) => showCrew || x.worked || shifts[x.id]) : []
@@ -141,7 +145,7 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
     setSaving(true)
     try {
       const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, couriers: Object.entries(courPay).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount), payNow: courNow[userId] !== false })),
-        staff: Object.entries(shifts).filter(([, v]) => Number(v.amount) > 0).map(([userId, v]) => ({ userId: Number(userId), hours: Number(String(v.hours).replace(',', '.')) || null, rate: crew.employees.find((x) => x.id === Number(userId))?.hourRate, amount: Number(v.amount), payNow: v.now })),
+        staff: Object.entries(shifts).filter(([, v]) => Number(v.amount) > 0).map(([userId, v]) => { const x = crew.employees.find((e) => e.id === Number(userId)); return { userId: Number(userId), hours: num(v.hours) || null, extraHours: v.fixed ? null : num(v.extra) || null, rate: x?.hourRate, extraRate: x?.overtimeRate || x?.hourRate, fixed: v.fixed, amount: Number(v.amount), payNow: v.now } }),
         note, force })
       onDone(data)
     } catch (err) {
@@ -203,17 +207,28 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
           )}
           {crew?.employees.length > 0 && (
             <div className="courier-close">
-              <h5>🕒 Turnos <small className="muted">· a quien se le paga por turno: horas × valor de la hora</small></h5>
+              <h5>🕒 Turnos <small className="muted">· por horas (horas × valor de la hora + horas extra) o un valor fijo</small></h5>
               <ul className="tip-list">{crewShown.map((x) => {
                 const v = shifts[x.id]
                 return (
                   <li key={x.id} className={v ? 'on' : ''}>
-                    <label className="check"><input type="checkbox" checked={Boolean(v)} onChange={() => toggleShift(x)} /> <span><strong>{x.name}</strong><small className="block muted">{formatMoney(x.hourRate)} la hora{x.positions.length ? ` · ${x.positions.join(', ')}` : ''}</small></span></label>
-                    {v && <div className="pay-row">
-                      <div className="input-prefix hours-in"><input inputMode="decimal" value={v.hours} onChange={(e) => setHours(x, e.target.value)} aria-label={`Horas de ${x.name}`} /><i aria-hidden="true">h</i></div>
-                      <MoneyInput id={`shift-${x.id}`} value={v.amount} onChange={(a) => setShifts((t) => ({ ...t, [x.id]: { ...t[x.id], amount: a } }))} aria-label={`Pago del turno a ${x.name}`} />
+                    <label className="check"><input type="checkbox" checked={Boolean(v)} onChange={() => toggleShift(x)} /> <span><strong>{x.name}</strong><small className="block muted">{formatMoney(x.hourRate)} la hora{x.overtimeRate ? ` · ${formatMoney(x.overtimeRate)} la extra` : ''}{x.positions.length ? ` · ${x.positions.join(', ')}` : ''}</small></span></label>
+                    {v && <>
+                      <div className="seg pay-now" role="group" aria-label={`Cómo se paga el turno de ${x.name}`}>
+                        <button type="button" className={`btn btn-sm${!v.fixed ? ' on' : ''}`} onClick={() => patchShift(x, { fixed: false })} aria-pressed={!v.fixed}>Por horas</button>
+                        <button type="button" className={`btn btn-sm${v.fixed ? ' on' : ''}`} onClick={() => patchShift(x, { fixed: true })} aria-pressed={v.fixed}>Valor fijo</button>
+                      </div>
+                      <div className="pay-row">
+                        {!v.fixed && <>
+                          <label className="input-prefix hours-in" title="Horas del turno"><input inputMode="decimal" value={v.hours} onChange={(e) => patchShift(x, { hours: e.target.value })} aria-label={`Horas de ${x.name}`} /><i aria-hidden="true">h</i></label>
+                          <label className="input-prefix hours-in extra" title="Horas extra"><span>+</span><input inputMode="decimal" value={v.extra} placeholder="0" onChange={(e) => patchShift(x, { extra: e.target.value })} aria-label={`Horas extra de ${x.name}`} /><i aria-hidden="true">h ext.</i></label>
+                          <strong className="money shift-total">{formatMoney(v.amount)}</strong>
+                        </>}
+                        {v.fixed && <MoneyInput id={`shift-${x.id}`} value={v.amount} onChange={(a) => setShifts((t) => ({ ...t, [x.id]: { ...t[x.id], amount: a } }))} aria-label={`Valor fijo del turno de ${x.name}`} />}
+                      </div>
+                      {!v.fixed && num(v.extra) > 0 && <small className="muted">{num(v.hours)} h × {formatMoney(x.hourRate)} + {num(v.extra)} h extra × {formatMoney(x.overtimeRate || x.hourRate)}{x.overtimeRate ? '' : ' (sin valor de hora extra configurado, se usa el normal)'}</small>}
                       <PayNow name={x.name} value={v.now} onChange={(now) => setShifts((t) => ({ ...t, [x.id]: { ...t[x.id], now } }))} />
-                    </div>}
+                    </>}
                   </li>
                 )
               })}</ul>

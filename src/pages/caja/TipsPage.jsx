@@ -251,7 +251,7 @@ const PendingForm = ({ data, admin, onPaid }) => {
             {p.rows.map((r) => (
               <label key={r.id} className="check">
                 <input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} />
-                <span className="grow">{r.kind === 'domicilios' ? `Domicilios del turno ${r.session || ''}${r.deliveries ? ` (${r.deliveries})` : ''}` : `Turno ${r.session || ''}${r.hours ? ` · ${r.hours} h × ${formatMoney(r.rate || 0)}` : ''}`}<small className="block muted">{formatDateTime(r.createdAt)}</small></span>
+                <span className="grow">{r.kind === 'domicilios' ? `Domicilios del turno ${r.session || ''}${r.deliveries ? ` (${r.deliveries})` : ''}` : `Turno ${r.session || ''}${r.fixed ? ' · valor fijo' : r.hours ? ` · ${r.hours} h${r.extraHours ? ` + ${r.extraHours} h extra` : ''}` : ''}`}<small className="block muted">{formatDateTime(r.createdAt)}</small></span>
                 <span className="money">{formatMoney(r.amount)}</span>
               </label>
             ))}

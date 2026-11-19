@@ -1743,3 +1743,7 @@ tr.row-expired td { background: var(--bad-50); }
 .input-prefix.hours-in > i { position: absolute; right: 10px; font-style: normal; color: var(--muted); font-weight: 600; pointer-events: none; }
 .tips-people .check .grow { flex: 1; }
 .tips-people li > strong small { font-weight: 500; }
+.input-prefix.hours-in.extra { width: 116px; }
+.input-prefix.hours-in.extra > span { position: absolute; left: 10px; color: var(--muted); font-weight: 600; }
+.input-prefix.hours-in.extra input { padding-left: 22px; padding-right: 48px; }
+.shift-total { margin-left: auto; font-size: 16px; }
