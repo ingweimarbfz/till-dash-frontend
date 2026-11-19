@@ -371,6 +371,17 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
   const flow = deliveryActions({ user, status: st, courier: order.courier, mustPayFirst, dispatchBlock: order.dispatchBlock })
   const cash = cashState({ user, courier: order.courier, status: st, cashPay: !order.deliveryPayMethod || order.deliveryPayMethod === 'efectivo', paid: order.status !== 'abierto', cashReceivedAt: order.cashReceivedAt, ...rxFigures(order.total, order.deliveryFee, order.cashReceivedFee, order.cashReceivedAmount) })
   const [paying, setPaying] = useState(false)
+  // Con cuánto paga en efectivo: se anota aquí, cuando ya se sabe qué pidió (no al abrir el domicilio).
+  const cashPay = order.deliveryPayMethod === 'efectivo'
+  const [cashWith, setCashWith] = useState(order.deliveryCashWith || '')
+  useEffect(() => { setCashWith(order.deliveryCashWith || '') }, [order.deliveryCashWith])
+  const canSetCash = cashPay && canAssign && order.status === 'abierto' && !order.cashReceivedAt
+  const cashDirty = Number(cashWith || 0) !== Number(order.deliveryCashWith || 0)
+  const saveCashWith = async () => {
+    if (cashWith !== '' && Number(cashWith) > 0 && Number(cashWith) < Number(order.total)) return toast(`Con ${formatMoney(Number(cashWith))} no alcanza: el total es ${formatMoney(order.total)}.`, 'bad')
+    setBusy(true)
+    try { await api.put(`/pedidos/${order.id}`, { deliveryCashWith: cashWith === '' ? null : Number(cashWith) }); toast(cashWith === '' ? 'Se quitó con cuánto paga' : 'Guardado: el domiciliario lleva el cambio'); onChanged() } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
+  }
   const act = async (url, body, msg) => {
     setBusy(true)
     try { await api.post(url, body); toast(msg); onChanged() } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
@@ -391,6 +402,16 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
         ) : <span>Domiciliario: <strong>{order.courier?.name || 'sin asignar'}</strong></span>}
         <div className={`alert ${order.status === 'cobrado' ? 'ok' : 'warn'}`} style={{ margin: 0 }}>{order.status === 'cobrado' ? `Pagado: ${formatMoney(order.paid || order.total)}.` : `Sin cobrar: ${formatMoney(order.total)}. ${order.deliveryPayMethod === 'efectivo' || !order.deliveryPayMethod ? 'Cóbralo en caja cuando el domiciliario traiga el dinero.' : 'Cóbralo en caja cuando llegue la transferencia.'}`}</div>
         {order.deliveryPayMethod && <small className={order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst ? 'text-warn' : 'muted'}><b>{order.deliveryPayMethod === 'efectivo' ? `💵 Paga en efectivo al domiciliario${order.deliveryCashWith ? ` con ${formatMoney(order.deliveryCashWith)} · llevar ${formatMoney(Math.max(0, order.deliveryCashWith - order.total))} de cambio` : ''}` : `📲 Paga por ${PAY_LABEL[order.deliveryPayMethod]}${order.status !== 'abierto' ? '' : payFirst ? ' · cobrar antes de enviar' : ' · transfiere al llegar'}`}</b></small>}
+        {canSetCash && (
+          <div className="fee-row">
+            <small className="muted">¿Con cuánto paga el cliente? Para que el domiciliario lleve el cambio.</small>
+            <div className="row wrap" style={{ gap: 8, alignItems: 'center' }}>
+              <div style={{ maxWidth: 180 }}><MoneyInput value={cashWith} onChange={setCashWith} aria-label="Paga con" placeholder="Ej. 100.000" /></div>
+              {cashDirty && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={saveCashWith}>Guardar</button>}
+              {!cashDirty && Number(cashWith) > 0 && <small className="muted">Cambio: <b>{formatMoney(Math.max(0, Number(cashWith) - Number(order.total)))}</b></small>}
+            </div>
+          </div>
+        )}
         <div className="row wrap" style={{ gap: 8 }}>
           <a href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
           {flow.undo && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.undo }, 'Estado actualizado')} title="Deshacer"><MdUndo /></button>}
