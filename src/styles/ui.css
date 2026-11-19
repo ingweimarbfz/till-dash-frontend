@@ -1735,3 +1735,11 @@ tr.row-expired td { background: var(--bad-50); }
 .alert.tip-later { align-items: center; }
 .alert.tip-later > svg { font-size: 22px; flex: none; color: var(--brand); }
 @media (max-width: 980px) { .tips-grid { grid-template-columns: 1fr; } }
+.pay-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pay-row .money-input, .pay-row > .input-prefix:not(.hours-in) { flex: 1; min-width: 120px; }
+.pay-now .btn { white-space: nowrap; }
+.input-prefix.hours-in { width: 86px; flex: none; position: relative; display: flex; align-items: center; }
+.input-prefix.hours-in input { padding-right: 26px; text-align: right; width: 100%; }
+.input-prefix.hours-in > i { position: absolute; right: 10px; font-style: normal; color: var(--muted); font-weight: 600; pointer-events: none; }
+.tips-people .check .grow { flex: 1; }
+.tips-people li > strong small { font-weight: 500; }

@@ -22,7 +22,7 @@ const OPERATION = {
     { to: '/clientes', label: 'Clientes', icon: MdStorefront, positions: [...SELLERS, 'domiciliario'] },
     { to: '/comandas', label: 'Comandas', icon: MdSoupKitchen, positions: ['cocina', 'bartender', 'barista'] },
     { to: '/caja', label: 'Caja', icon: MdPointOfSale, positions: ['cajero'] },
-    { to: '/propinas', label: 'Propinas', icon: MdVolunteerActivism, positions: ['cajero'] },
+    { to: '/propinas', label: 'Pagos al personal', icon: MdVolunteerActivism, positions: ['cajero'] },
     { to: '/cuentas-por-cobrar', label: 'Cuentas por cobrar', icon: MdRequestQuote, positions: ['cajero'] },
     { to: '/impresora', label: 'Impresora', icon: MdPrint, positions: ['cajero'] },
     { to: '/incidentes', label: 'Incidentes', icon: MdReportProblem }
