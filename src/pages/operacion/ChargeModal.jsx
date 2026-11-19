@@ -27,10 +27,13 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const [tipCustom, setTipCustom] = useState('')
   // Domicilio: se cobra o no, con un valor que se escribe a mano (precargado con el del pedido o el sugerido).
   const isDelivery = order.type === 'domicilio'
-  const suggestedFee = Number(order.deliveryFee) || Number(settings.deliveryFeeDefault) || 0
+  // TD-015: si el domiciliario ya registró el valor del domicilio y el efectivo que recibió, se precargan.
+  const reported = isDelivery && order.cashReceivedAt && order.cashReceivedAmount !== null && order.cashReceivedAmount !== undefined
+  const reportedFee = reported && order.cashReceivedFee !== null && order.cashReceivedFee !== undefined ? Number(order.cashReceivedFee) : null
+  const suggestedFee = reportedFee ?? (Number(order.deliveryFee) || Number(settings.deliveryFeeDefault) || 0)
   const [feeOn, setFeeOn] = useState(isDelivery && suggestedFee > 0)
   const [feeValue, setFeeValue] = useState(suggestedFee || '')
-  const [pays, setPays] = useState([{ method: (order.type === 'domicilio' && order.deliveryPayMethod) || 'efectivo', amount: '', received: (order.type === 'domicilio' && order.deliveryPayMethod === 'efectivo' && order.deliveryCashWith) || '', reference: '' }])
+  const [pays, setPays] = useState([{ method: (order.type === 'domicilio' && order.deliveryPayMethod) || 'efectivo', amount: '', received: reported ? Number(order.cashReceivedAmount) : (order.type === 'domicilio' && order.deliveryPayMethod === 'efectivo' && order.deliveryCashWith) || '', reference: '' }])
   const [cxc, setCxc] = useState({ customerName: order.customerName || '', customerDoc: '', customerPhone: order.customerPhone || '', dueDate: '' })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -124,6 +127,7 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
             <Field label="Descuento" htmlFor="cd"><select id="cd" value={discountId} onChange={(e) => setDiscountId(e.target.value)}><option value="">Sin descuento</option>{discounts.map((d) => <option key={d.id} value={d.id}>{d.name} ({d.type === 'porcentaje' ? `${d.value} %` : formatMoney(d.value)})</option>)}</select></Field>
             {disc ? <Field label="Motivo" htmlFor="cr" required={disc.requiresReason}><input id="cr" value={reason} onChange={(e) => setReason(e.target.value)} placeholder={disc.description || ''} /></Field> : <span />}
           </div>
+          {reported && <div className="alert ok" style={{ margin: 0 }}>💵 {order.courier?.name || 'El domiciliario'} registró el domicilio en {formatMoney(suggestedFee)} y que el cliente dio {formatMoney(order.cashReceivedAmount)}. Ya quedaron puestos abajo.</div>}
           {isDelivery && (
             <div className="tip-box">
               <label className={`check-card${feeOn ? ' on' : ''}`}>

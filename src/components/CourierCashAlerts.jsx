@@ -17,7 +17,7 @@ const canNotify = () => typeof window !== 'undefined' && 'Notification' in windo
 const systemNotice = (a) => {
   if (!canNotify() || Notification.permission !== 'granted') return
   try {
-    const n = new Notification(`${a.courier?.name || 'El domiciliario'} recibió ${formatMoney(a.amount)}`, { body: `${a.number}${a.customerName ? ` · ${a.customerName}` : ''} · cóbralo en caja`, tag: `td-cash-${a.id}`, renotify: true })
+    const n = new Notification(`${a.courier?.name || 'El domiciliario'} cobró ${formatMoney(a.amount)}`, { body: `${a.number}${a.change ? ` · dio ${formatMoney(a.received)}, cambio ${formatMoney(a.change)}` : ''}${a.customerName ? ` · ${a.customerName}` : ''} · cóbralo en caja`, tag: `td-cash-${a.id}`, renotify: true })
     n.onclick = () => { window.focus(); n.close() }
   } catch { /* algunos navegadores solo permiten notificaciones desde un service worker */ }
 }
@@ -46,8 +46,8 @@ const CourierCashAlerts = () => {
         <div key={a.id} className="call-toast cash">
           <span className="call-icon"><MdPayments /></span>
           <div className="grow">
-            <strong>{a.courier?.name || 'El domiciliario'} recibió {formatMoney(a.amount)}</strong>
-            <small>{a.number}{a.customerName ? ` · ${a.customerName}` : ''} · {since(a.receivedAt)} · cóbralo en caja</small>
+            <strong>{a.courier?.name || 'El domiciliario'} cobró {formatMoney(a.amount)}</strong>
+            <small>{a.number}{a.customerName ? ` · ${a.customerName}` : ''} · domicilio {a.fee ? formatMoney(a.fee) : 'sin cobro'}{a.change ? ` · dio ${formatMoney(a.received)}, cambio ${formatMoney(a.change)}` : ''} · {since(a.receivedAt)}</small>
           </div>
           <button type="button" className="btn btn-sm btn-primary" onClick={() => { setHidden((s) => new Set([...s, a.id])); navigate(`/pedidos/${a.id}`) }}><MdPointOfSale /> Cobrar</button>
           <button type="button" className="btn btn-ghost btn-icon btn-sm" aria-label="Ocultar aviso" onClick={() => setHidden((s) => new Set([...s, a.id]))}><MdClose /></button>
