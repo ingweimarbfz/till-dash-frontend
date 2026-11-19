@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { MdVolunteerActivism, MdPayments, MdHistory, MdPointOfSale, MdAccountBalance, MdPhoneIphone, MdSchedule, MdBadge } from 'react-icons/md'
+import { MdAddCircle, MdVolunteerActivism, MdPayments, MdHistory, MdPointOfSale, MdAccountBalance, MdPhoneIphone, MdSchedule, MdBadge } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { Badge, Card, Empty, Field, Kpi, PageHead, Spinner, useToast } from '../../components/ui'
@@ -241,7 +241,7 @@ const PendingForm = ({ data, admin, onPaid }) => {
     try { const { data: r } = await api.post('/personal/pagos', { ...src.body, note, earnings: [...picked] }); setNote(''); onPaid(r) } catch (err) { setError(errorMessage(err)) }
     setSaving(false)
   }
-  if (!data.pending.length) return <Empty icon={<MdSchedule />}>No hay turnos ni domicilios pendientes. Cuando en el cierre alguien no reciba su pago, aparece aquí.</Empty>
+  if (!data.pending.length) return <Empty icon={<MdSchedule />}>No hay turnos ni domicilios pendientes. Cuando en el cierre alguien no reciba su pago, o registras un turno abajo, aparece aquí.</Empty>
   return (
     <form className="tips-pay" onSubmit={submit} noValidate>
       <ul className="tip-list tips-people">
@@ -251,7 +251,7 @@ const PendingForm = ({ data, admin, onPaid }) => {
             {p.rows.map((r) => (
               <label key={r.id} className="check">
                 <input type="checkbox" checked={picked.has(r.id)} onChange={() => toggle(r.id)} />
-                <span className="grow">{r.kind === 'domicilios' ? `Domicilios del turno ${r.session || ''}${r.deliveries ? ` (${r.deliveries})` : ''}` : `Turno ${r.session || ''}${r.fixed ? ' · valor fijo' : r.hours ? ` · ${r.hours} h${r.extraHours ? ` + ${r.extraHours} h extra` : ''}` : ''}`}<small className="block muted">{formatDateTime(r.createdAt)}</small></span>
+                <span className="grow">{r.kind === 'domicilios' ? `Domicilios del turno ${r.session || ''}${r.deliveries ? ` (${r.deliveries})` : ''}` : `${r.session ? `Turno ${r.session}` : r.note || 'Turno'}${r.fixed ? ' · valor fijo' : r.hours ? ` · ${r.hours} h${r.extraHours ? ` + ${r.extraHours} h extra` : ''}` : ''}`}<small className="block muted">{formatDateTime(r.createdAt)}</small></span>
                 <span className="money">{formatMoney(r.amount)}</span>
               </label>
             ))}
@@ -263,6 +263,63 @@ const PendingForm = ({ data, admin, onPaid }) => {
       <div className="row-between tips-total">
         <span className="muted">Turnos y nómina quedan como gasto de Nómina; lo de los domicilios no.</span>
         <button type="submit" className="btn btn-primary" disabled={saving || !total}>{saving ? <Spinner /> : <MdPayments />} Pagar {formatMoney(total)}</button>
+      </div>
+    </form>
+  )
+}
+
+// Registrar a mano un turno que no se pagó en el cierre (TD-021): por horas (con horas extra) o valor fijo.
+// Queda pendiente y se paga arriba.
+const localDate = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 10) }
+const ShiftForm = ({ data, onSaved }) => {
+  const START = { userId: '', date: localDate(), fixed: false, hours: '8', extra: '', amount: '', note: '' }
+  const [f, setF] = useState(START)
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const emp = data.crew.find((x) => x.id === Number(f.userId))
+  const num = (v) => Number(String(v ?? '').replace(',', '.')) || 0
+  const extraRate = emp ? emp.overtimeRate || emp.hourRate : 0
+  const amount = f.fixed ? Number(f.amount) || 0 : Math.round(num(f.hours) * (emp?.hourRate || 0) + num(f.extra) * extraRate)
+  const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
+  const submit = async (e) => {
+    e.preventDefault(); setError('')
+    if (!emp) return setError('Elige el empleado.')
+    if (!f.fixed && !emp.hourRate) return setError(`${emp.name} no tiene valor de la hora. Usa valor fijo o configúralo en Usuarios.`)
+    if (!(amount > 0)) return setError(f.fixed ? 'Escribe el valor del turno.' : 'Escribe las horas del turno.')
+    setSaving(true)
+    try {
+      await api.post('/personal/turnos', { userId: emp.id, date: f.date, fixed: f.fixed, hours: num(f.hours) || null, extraHours: f.fixed ? null : num(f.extra) || null, amount: f.fixed ? amount : undefined, note: f.note })
+      setF({ ...START, date: f.date }); onSaved(emp.name, amount)
+    } catch (err) { setError(errorMessage(err)) }
+    setSaving(false)
+  }
+  return (
+    <form className="tips-pay" onSubmit={submit} noValidate>
+      <div className="form-grid">
+        <Field label="Empleado" htmlFor="sf-user" required>
+          <select id="sf-user" value={f.userId} onChange={set('userId')}>
+            <option value="">Elige…</option>
+            {data.crew.map((x) => <option key={x.id} value={x.id}>{x.name}{x.hourRate ? ` · ${formatMoney(x.hourRate)} la hora` : ''}</option>)}
+          </select>
+        </Field>
+        <Field label="Fecha del turno" htmlFor="sf-date" required><input id="sf-date" type="date" value={f.date} max={localDate()} onChange={set('date')} /></Field>
+      </div>
+      <div className="seg" role="group" aria-label="Cómo se paga el turno">
+        <button type="button" className={`btn btn-sm${!f.fixed ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, fixed: false }))} aria-pressed={!f.fixed}>Por horas</button>
+        <button type="button" className={`btn btn-sm${f.fixed ? ' on' : ''}`} onClick={() => setF((x) => ({ ...x, fixed: true }))} aria-pressed={f.fixed}>Valor fijo</button>
+      </div>
+      <div className="form-grid">
+        {!f.fixed && <>
+          <Field label="Horas" htmlFor="sf-hours" required><input id="sf-hours" inputMode="decimal" value={f.hours} onChange={set('hours')} /></Field>
+          <Field label="Horas extra" htmlFor="sf-extra" hint={emp ? `${formatMoney(extraRate)} la hora extra` : null}><input id="sf-extra" inputMode="decimal" placeholder="0" value={f.extra} onChange={set('extra')} /></Field>
+        </>}
+        {f.fixed && <Field label="Valor del turno" htmlFor="sf-amount" required><MoneyInput id="sf-amount" value={f.amount} onChange={(v) => setF((x) => ({ ...x, amount: v }))} /></Field>}
+        <Field label="Nota" htmlFor="sf-note"><input id="sf-note" value={f.note} maxLength={120} onChange={set('note')} placeholder="Opcional" /></Field>
+      </div>
+      {error && <div className="alert bad">{error}</div>}
+      <div className="row-between tips-total">
+        <span className="muted">Queda pendiente para pagarlo cuando quieras.</span>
+        <button type="submit" className="btn btn-primary" disabled={saving || !emp}>{saving ? <Spinner /> : <MdAddCircle />} Registrar {formatMoney(amount)}</button>
       </div>
     </form>
   )
@@ -326,6 +383,9 @@ const PersonalTab = ({ kind, admin, toast }) => {
       <Card title={kind === 'nomina' ? 'Pagar nómina' : 'Pagar turnos y domicilios'} icon={<MdPayments />}>
         {kind === 'nomina' ? <PayrollForm data={data} admin={admin} onPaid={paid} /> : <PendingForm data={data} admin={admin} onPaid={paid} />}
       </Card>
+      {kind === 'pendientes' && <Card title="Registrar un turno" icon={<MdAddCircle />}>
+        <ShiftForm data={data} onSaved={(name, amount) => { toast(`Turno de ${name} registrado: ${formatMoney(amount)}`); load() }} />
+      </Card>}
       <Card title="Pagos hechos" icon={<MdHistory />} flush>
         {!history.length ? <Empty icon={<MdHistory />}>Aún no hay pagos.</Empty> : (
           <div className="table-wrap"><table className="table">
@@ -333,7 +393,7 @@ const PersonalTab = ({ kind, admin, toast }) => {
             <tbody>{history.map((e) => (
               <tr key={e.id}>
                 <td><small>{formatDateTime(e.paidAt)}</small>{e.paidNumber && <small className="block muted">{e.paidNumber}</small>}</td>
-                <td>{e.name}<small className="block muted">{e.kind === 'nomina' ? `Nómina ${periodLabel(e.periodFrom, e.periodTo)}` : e.kind === 'domicilios' ? `Domicilios ${e.session || ''}` : `Turno ${e.session || ''}${e.hours ? ` · ${e.hours} h` : ''}`}</small></td>
+                <td>{e.name}<small className="block muted">{e.kind === 'nomina' ? `Nómina ${periodLabel(e.periodFrom, e.periodTo)}` : e.kind === 'domicilios' ? `Domicilios ${e.session || ''}` : `${e.session ? `Turno ${e.session}` : e.note || 'Turno'}${e.fixed ? ' · valor fijo' : e.hours ? ` · ${e.hours} h${e.extraHours ? ` + ${e.extraHours} h extra` : ''}` : ''}`}</small></td>
                 <td className="hide-sm"><SourceCell source={e.paidSource} label={e.paidSourceLabel} method={e.paidMethod} methods={data.transferMethods} />{e.paidBy && <small className="block muted">{e.paidBy}</small>}</td>
                 <td className="num money">{formatMoney(e.amount)}</td>
               </tr>
@@ -349,13 +409,15 @@ const TABS = { propinas: 'Propinas', pendientes: 'Turnos y domicilios', nomina: 
 const PersonalPaymentsPage = () => {
   const { user } = useAuth()
   const admin = ADMIN.includes(user.role)
+  // Turnos, domicilios pendientes y nómina: solo superadmin o el admin con el permiso de pagos (TD-021).
+  const canPay = Boolean(user.canManagePay)
   const [params, setParams] = useSearchParams()
-  const tab = TABS[params.get('tab')] && (params.get('tab') !== 'nomina' || admin) ? params.get('tab') : 'propinas'
+  const tab = TABS[params.get('tab')] && (params.get('tab') === 'propinas' || canPay) ? params.get('tab') : 'propinas'
   const [toast, toastNode] = useToast()
   return (
     <div className="stack">
-      <PageHead title="Pagos al personal" subtitle="Propinas, turnos y domicilios que quedaron pendientes, y nómina. Se paga cuando se quiera, desde la caja, el fondo o por transferencia." />
-      <Tabs value={tab} onChange={(t) => setParams(t === 'propinas' ? {} : { tab: t }, { replace: true })} tabs={Object.entries(TABS).filter(([k]) => k !== 'nomina' || admin)} />
+      <PageHead title="Pagos al personal" subtitle={canPay ? "Propinas, turnos y domicilios que quedaron pendientes, y nómina. Se paga cuando se quiera, desde la caja, el fondo o por transferencia." : "Las propinas se pagan cuando se quiera, desde la caja, el fondo o por transferencia."} />
+      <Tabs value={tab} onChange={(t) => setParams(t === 'propinas' ? {} : { tab: t }, { replace: true })} tabs={Object.entries(TABS).filter(([k]) => k === 'propinas' || canPay)} />
       {tab === 'propinas' ? <TipsTab admin={admin} toast={toast} /> : <PersonalTab key={tab} kind={tab} admin={admin} toast={toast} />}
       {toastNode}
     </div>
