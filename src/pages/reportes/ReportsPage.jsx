@@ -98,7 +98,7 @@ const Tips = ({ r, file }) => (
       <Kpi label="Sin repartir" value={formatMoney(r.tips.pending)} tone={r.tips.pending > 0 ? 'warn' : ''} note={r.tips.pending < 0 ? 'Se pagó más de lo recibido' : ''} />
     </div>
     <div className="grid grid-2">
-      <Card title="Reparto por empleado">{r.tips.byEmployee.length ? <Ranking rows={r.tips.byEmployee} value="amount" label="name" note={(x) => `${x.times} pago${x.times === 1 ? '' : 's'}`} /> : <Empty>Aún no se han repartido propinas en los cierres de caja.</Empty>}</Card>
+      <Card title="Reparto por empleado">{r.tips.byEmployee.length ? <Ranking rows={r.tips.byEmployee} value="amount" label="name" note={(x) => `${x.times} pago${x.times === 1 ? '' : 's'}`} /> : <Empty>Aún no se han pagado propinas en este rango. Se pagan en Operación → Propinas.</Empty>}</Card>
       <Card title="Pagos" flush actions={<ExportBtn onClick={() => download(`propinas-${file}`, [['Fecha', (x) => formatDateTime(x.at)], ['Empleado', 'name'], ['Turno', 'session'], ['Valor', 'amount']], r.tips.payouts)} />}>
         {!r.tips.payouts.length ? <Empty>Sin pagos.</Empty> : <ul className="list padded">{r.tips.payouts.map((t) => <li key={t.id}><span><strong>{t.name}</strong> <small>{t.session} · {formatDateTime(t.at)}</small></span><span className="money">{formatMoney(t.amount)}</span></li>)}</ul>}
       </Card>

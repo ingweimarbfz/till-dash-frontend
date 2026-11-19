@@ -18,7 +18,7 @@ const MODULES = [
   [MdTableRestaurant, 'Mesas y pedidos', 'Abre la mesa, toma el pedido con propina y cortesías, y traslada la cuenta a otra mesa en un toque.'],
   [MdQrCode2, 'Carta por QR', 'El cliente escanea el QR de su mesa, ve la carta con fotos, llama al mesero o hace su pedido.'],
   [MdSoupKitchen, 'Comandas de cocina y bar', 'Cada pedido llega a cocina o barra con su tiempo de espera y avisa cuando está listo.'],
-  [MdPointOfSale, 'Caja y propinas', 'Apertura con base, pagos mixtos, gastos del turno, cierre con arqueo y reparto de propinas.'],
+  [MdPointOfSale, 'Caja y propinas', 'Apertura con base, pagos mixtos, gastos del turno, cierre con arqueo y pago de propinas cuando se quiera.'],
   [MdInventory2, 'Inventario por bodega', 'Bodega principal y una por sucursal, traslados y alertas cuando un producto se va acabando.'],
   [MdAccountBalance, 'Finanzas y socios', 'Bóveda, fondos por sucursal, gastos, aportes, utilidades y retiros de cada socio.'],
   [MdBarChart, 'Reportes', 'Ventas por día, semana o rango; productos, meseros, propinas y cuánto vende cada mesa por hora.'],

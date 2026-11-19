@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong, MdLockReset, MdCheck, MdClose
+  MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong, MdLockReset, MdCheck, MdClose, MdVolunteerActivism
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { ShiftExpenseModal, FundsRequestModal, ShiftExpensesCard, RequestsTab } from './shiftExpenses'
@@ -66,10 +66,9 @@ const MoveModal = ({ session, admin, onClose, onDone }) => {
         <div className="seg span-2">
           {admin && <button type="button" className={`btn btn-sm${type === 'egreso' ? ' on' : ''}`} onClick={() => setType('egreso')}><MdRemove /> Egreso</button>}
           <button type="button" className={`btn btn-sm${type === 'ingreso' ? ' on' : ''}`} onClick={() => setType('ingreso')}><MdAdd /> Ingreso</button>
-          <button type="button" className={`btn btn-sm${type === 'propina_pagada' ? ' on' : ''}`} onClick={() => setType('propina_pagada')}>Pago de propinas</button>
         </div>
         <Field label="Valor" htmlFor="mv" required><MoneyInput id="mv" value={amount} onChange={setAmount} autoFocus /></Field>
-        <Field label="Concepto" htmlFor="mc" required><input id="mc" value={note} onChange={(e) => setNote(e.target.value)} placeholder={type === 'egreso' ? 'Ej. compra de hielo' : type === 'ingreso' ? 'Ej. cambio desde la bóveda' : 'Ej. propinas del turno a meseros'} /></Field>
+        <Field label="Concepto" htmlFor="mc" required><input id="mc" value={note} onChange={(e) => setNote(e.target.value)} placeholder={type === 'egreso' ? 'Ej. compra de hielo' : 'Ej. cambio desde la bóveda'} /></Field>
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
     </Modal>
@@ -94,75 +93,32 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
   const trPending = transfers.totals?.pendiente || { count: 0, amount: 0 }
   const [nextFloat, setNextFloat] = useState(session.openingAmount || '')
   const [note, setNote] = useState('')
-  const [staff, setStaff] = useState(null)
-  const [tips, setTips] = useState({})
-  // Domiciliarios: su parte de los domicilios cobrados en el turno más las propinas de sus entregas.
+  // Domiciliarios: su parte de los domicilios cobrados en el turno. Sus propinas se pagan en Caja → Propinas.
   const [cour, setCour] = useState(null)
   const [courPay, setCourPay] = useState({})
-  const [showAll, setShowAll] = useState(false)
   const [force, setForce] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => {
-    api.get(`/caja/turnos/${session.id}/propinas`, { params: { sede: undefined } }).then(({ data }) => {
-      setStaff(data)
-      setTips(Object.fromEntries(data.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested])))
-    }).catch(() => setStaff({ total: 0, employees: [] }))
     api.get(`/caja/turnos/${session.id}/domiciliarios`).then(({ data }) => {
       setCour(data); setCourPay(Object.fromEntries(data.rows.map((r) => [r.userId, r.suggested])))
     }).catch(() => setCour({ rows: [], total: 0 }))
   }, [session.id])
   const courTotal = Object.values(courPay).reduce((a, v) => a + (Number(v) || 0), 0)
-  const tipTotal = Object.values(tips).reduce((a, v) => a + (Number(v) || 0), 0)
   const cnt = counted === '' ? null : Number(counted)
   const diff = cnt === null ? null : cnt - summary.expectedCash
-  const toVault = cnt === null ? null : cnt - tipTotal - courTotal - (Number(nextFloat) || 0)
-  const picked = Object.keys(tips).map(Number)
-  // Propinas para repartir: las del turno menos las de domicilios con domiciliario (a él se le pagan abajo).
-  const tipPool = staff ? Math.round(staff.total) : summary.tips
-  const courierTips = Math.max(0, summary.tips - tipPool)
-  // Quien solo es domiciliario no entra en el reparto de propinas del salón.
-  const eligible = staff ? staff.employees.filter((x) => !(x.positions.length && x.positions.every((p) => p === 'domiciliario'))) : []
-  const shown = eligible.filter((x) => showAll || x.served || picked.includes(x.id))
-  // Reparto: en grupo (partes iguales, con bonificación opcional al mejor calificado) o individual (lo de sus mesas).
-  const [mode, setMode] = useState('individual')
-  const [bonusOn, setBonusOn] = useState(false)
-  const [bonusPct, setBonusPct] = useState('20')
-  const score = (x) => (x.rating ? x.rating.avg * 100 + x.rating.count : x.ratingMonth ? x.ratingMonth.avg * 100 - 1000 + x.ratingMonth.count : -1e9)
-  const groupIds = (ids) => ids || (picked.length > 1 ? picked : shown.map((x) => x.id))
-  const best = staff && mode === 'grupo' ? staff.employees.filter((x) => groupIds().includes(x.id) && (x.rating || x.ratingMonth)).sort((a, b) => score(b) - score(a))[0] || null : null
-  const split = (opts = {}) => {
-    const ids = groupIds(opts.ids)
-    if (!ids.length) return
-    const on = opts.bonusOn ?? bonusOn
-    const pctV = Math.max(0, Math.min(200, Number(String(opts.bonusPct ?? bonusPct).replace(',', '.')) || 0))
-    const top = on && ids.length > 1 ? (opts.best ?? (staff.employees.filter((x) => ids.includes(x.id) && (x.rating || x.ratingMonth)).sort((a, b) => score(b) - score(a))[0] || null)) : null
-    const w = ids.map((id) => (top && id === top.id ? 1 + pctV / 100 : 1))
-    const sumW = w.reduce((a, x) => a + x, 0)
-    const parts = ids.map((id, i) => Math.floor(tipPool * w[i] / sumW))
-    const rest = tipPool - parts.reduce((a, x) => a + x, 0)
-    const iTop = top ? ids.indexOf(top.id) : 0
-    parts[iTop >= 0 ? iTop : 0] += rest
-    setTips(Object.fromEntries(ids.map((id, i) => [id, parts[i]])))
-  }
-  // En grupo, la propina se reparte entre todos los que aparecen en la lista (marca o desmarca para ajustar).
-  const toGroup = () => { setMode('grupo'); split({ ids: shown.map((x) => x.id) }) }
-  const toggle = (id) => {
-    if (mode === 'grupo') { const ids = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]; if (ids.length) split({ ids }); else setTips({}); return }
-    setTips((t) => { const n = { ...t }; if (id in n) delete n[id]; else n[id] = ''; return n })
-  }
-  const toIndividual = () => { setMode('individual'); setBonusOn(false); setTips(Object.fromEntries(staff.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested]))) }
+  const toVault = cnt === null ? null : cnt - courTotal - (Number(nextFloat) || 0)
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (cnt === null) return setError('Cuenta el efectivo y escribe el total.')
-    if (toVault < 0) return setError('El efectivo contado no alcanza para las propinas, los domiciliarios y la base. Ajusta los valores.')
+    if (toVault < 0) return setError('El efectivo contado no alcanza para los domiciliarios y la base. Ajusta los valores.')
     if (trPending.count && !pendingOk) {
       setPendingOk(true)
       return setError(`Quedan ${trPending.count} transferencia${trPending.count === 1 ? '' : 's'} por verificar (${formatMoney(trPending.amount)}). Si cierras así, quedan pendientes en Caja → Transferencias para revisarlas después.`)
     }
     setSaving(true)
     try {
-      const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, tips: Object.entries(tips).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), couriers: Object.entries(courPay).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), note, force })
+      const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, couriers: Object.entries(courPay).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), note, force })
       onDone(data)
     } catch (err) {
       const msg = errorMessage(err); setError(msg); setSaving(false)
@@ -199,41 +155,17 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
         </section>
 
         <section className="close-step">
-          <h4><span>2</span> Propinas <small className="muted">· {formatMoney(tipPool)} para repartir{courierTips > 0 ? ` (+ ${formatMoney(courierTips)} de domicilios, van al domiciliario)` : ''}</small></h4>
-          {!staff ? <Spinner /> : <>
-            <div className="seg seg-wrap">
-              <button type="button" className={`btn btn-sm${mode === 'individual' ? ' on' : ''}`} onClick={toIndividual}>Individual · según sus mesas</button>
-              <button type="button" className={`btn btn-sm${mode === 'grupo' ? ' on' : ''}`} onClick={toGroup} disabled={!tipPool}>En grupo · partes iguales</button>
-              {Object.keys(tips).length > 0 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setTips({})}>Ninguna</button>}
-            </div>
-            {mode === 'grupo' && (
-              <div className="tip-bonus">
-                <label className="check"><input type="checkbox" checked={bonusOn} disabled={!best} onChange={(e) => { setBonusOn(e.target.checked); split({ bonusOn: e.target.checked }) }} />
-                  <span><strong>Dar más propina al mejor calificado</strong><small className="block muted">{best ? `${best.name} · ${(best.rating || best.ratingMonth).avg} ★ (${(best.rating || best.ratingMonth).count} calificaciones${best.rating ? ' en el turno' : ' en 30 días'})` : 'Aún no hay calificaciones del personal elegido.'}</small></span>
-                </label>
-                {bonusOn && best && <div className="input-prefix bonus-pct"><span>+</span><input inputMode="decimal" value={bonusPct} onChange={(e) => { setBonusPct(e.target.value); split({ bonusPct: e.target.value }) }} aria-label="Porcentaje adicional" /><i aria-hidden="true">%</i></div>}
-                <button type="button" className="btn btn-sm" onClick={() => split()}>Recalcular</button>
-              </div>
-            )}
-            <ul className="tip-list">
-              {shown.map((x) => (
-                <li key={x.id} className={x.id in tips ? 'on' : ''}>
-                  <label className="check"><input type="checkbox" checked={x.id in tips} onChange={() => toggle(x.id)} /> <span><strong>{x.name}</strong>{best?.id === x.id && bonusOn && <Badge tone="brand">+{bonusPct} %</Badge>}<small className="block muted">{x.positions.length ? x.positions.join(', ') : x.role}{x.suggested > 0 ? ` · ${formatMoney(x.suggested)} de sus mesas` : ''}{(x.rating || x.ratingMonth) ? ` · ${(x.rating || x.ratingMonth).avg} ★` : ''}</small></span></label>
-                  {x.id in tips && <MoneyInput id={`tip-${x.id}`} value={tips[x.id]} onChange={(v) => setTips((t) => ({ ...t, [x.id]: v }))} aria-label={`Propina para ${x.name}`} />}
-                </li>
-              ))}
-              {!shown.length && <li className="muted"><small>Nadie atendió pedidos con propina en este turno.</small></li>}
-            </ul>
-            {eligible.length > shown.length && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAll(true)}>Ver todo el personal ({eligible.length})</button>}
-            <div className="row-between"><span className="muted">Total a pagar en efectivo</span><strong className="money">{formatMoney(tipTotal)}</strong></div>
-            {tipTotal > tipPool && <small className="text-warn">Repartes más de lo que dejaron de propina en el turno.</small>}
-          </>}
+          <h4><span>2</span> Propinas y domiciliarios</h4>
+          <div className="alert info tip-later">
+            <MdVolunteerActivism aria-hidden="true" />
+            <span>Los clientes dejaron <strong>{formatMoney(summary.tips)}</strong> de propina en este turno. Las propinas ya no se pagan al cerrar: quedan acumuladas y se pagan cuando se quiera en <Link to="/propinas">Propinas</Link>.</span>
+          </div>
           {cour?.rows.length > 0 && (
             <div className="courier-close">
-              <h5>🛵 Domiciliarios <small className="muted">· {cour.rule.mode === 'todo' ? 'les toca todo el domicilio' : `les toca el ${cour.rule.percent} % del domicilio`} + propinas de sus entregas</small></h5>
+              <h5>🛵 Domiciliarios <small className="muted">· {cour.rule.mode === 'todo' ? 'les toca todo el domicilio' : `les toca el ${cour.rule.percent} % del domicilio`} · sus propinas se pagan en Propinas</small></h5>
               <ul className="tip-list">{cour.rows.map((r) => (
                 <li key={r.userId} className="on">
-                  <span><strong>{r.name}</strong><small className="block muted">{r.deliveries} domicilio{r.deliveries === 1 ? '' : 's'} · {formatMoney(r.share)} de {formatMoney(r.fees)} en domicilios{r.tips > 0 ? ` · ${formatMoney(r.tips)} propinas` : ''}</small></span>
+                  <span><strong>{r.name}</strong><small className="block muted">{r.deliveries} domicilio{r.deliveries === 1 ? '' : 's'} · {formatMoney(r.share)} de {formatMoney(r.fees)} en domicilios{r.tips > 0 ? ` · ${formatMoney(r.tips)} de propina, por pagar en Propinas` : ''}</small></span>
                   <MoneyInput id={`cour-${r.userId}`} value={courPay[r.userId] ?? ''} onChange={(v) => setCourPay((t) => ({ ...t, [r.userId]: v }))} aria-label={`Pago a ${r.name}`} />
                 </li>
               ))}</ul>
@@ -249,7 +181,7 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
           <div className={`vault-box${toVault !== null && toVault < 0 ? ' bad' : ''}`}>
             <span>Pasa a la bóveda</span>
             <strong>{toVault === null ? '—' : formatMoney(toVault)}</strong>
-            <small>{cnt === null ? 'Escribe el efectivo contado' : `${formatMoney(cnt)} contado − ${formatMoney(tipTotal)} propinas${courTotal ? ` − ${formatMoney(courTotal)} domiciliarios` : ''} − ${formatMoney(Number(nextFloat) || 0)} base`}</small>
+            <small>{cnt === null ? 'Escribe el efectivo contado' : `${formatMoney(cnt)} contado${courTotal ? ` − ${formatMoney(courTotal)} domiciliarios` : ''} − ${formatMoney(Number(nextFloat) || 0)} base`}</small>
           </div>
           <Field label="Observaciones del cierre" htmlFor="cn"><textarea id="cn" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. faltante por un billete falso, se pagó el hielo con caja" /></Field>
         </section>
@@ -282,7 +214,7 @@ const ReopenModal = ({ session, admin, onClose, onDone }) => {
     <Modal title={`${admin ? 'Reabrir' : 'Pedir reabrir'} el turno ${session.number}`} onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="reopen-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLockReset />} {admin ? 'Reabrir turno' : 'Enviar solicitud'}</button></>}>
       <form id="reopen-form" className="stack" style={{ gap: 12 }} onSubmit={submit} noValidate>
-        <div className="alert warn">Al reabrir se anula el cierre: vuelven a la caja los {formatMoney(snap.toVault)} que pasaron a la bóveda, las propinas pagadas ({formatMoney(snap.tipsPaid)}) y la base que quedaba. Corrige lo necesario y cierra el turno de nuevo.</div>
+        <div className="alert warn">Al reabrir se anula el cierre: vuelven a la caja los {formatMoney(snap.toVault)} que pasaron a la bóveda, {snap.tipsPaid > 0 ? `las propinas pagadas en ese cierre (${formatMoney(snap.tipsPaid)}), ` : ''}lo pagado a los domiciliarios y la base que quedaba. Las propinas pagadas en Propinas no se anulan. Corrige lo necesario y cierra el turno de nuevo.</div>
         <Field label="Motivo de la reapertura" htmlFor="rr" required hint={admin ? 'Queda en la auditoría y se avisa por Telegram.' : 'El administrador recibe la solicitud con este motivo.'}>
           <textarea id="rr" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus placeholder="Ej. registré un pago en efectivo que fue por Nequi; conté mal los billetes de 50.000" />
         </Field>
