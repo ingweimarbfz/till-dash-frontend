@@ -3,6 +3,7 @@ import { MdSoupKitchen, MdPlayArrow, MdCheck, MdDoneAll, MdVolumeUp, MdVolumeOff
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, PageHead, Spinner, useToast } from '../../components/ui'
 import { AREA_LABEL, beep, ITEM_STATUS, ITEM_TONE, minutes, Qty } from './common'
+import { refreshMenuBadges } from '../../components/MenuBadges'
 
 const POLL_MS = 10000
 
@@ -25,7 +26,7 @@ const KitchenPage = () => {
   useEffect(() => { load(); const t = setInterval(load, POLL_MS); const m = setInterval(() => tick((x) => x + 1), 30000); return () => { clearInterval(t); clearInterval(m) } }, [load])
   const toggleSound = () => setSound((s) => { try { localStorage.setItem('td_kitchen_sound', s ? 'off' : 'on') } catch { /* nada */ } if (!s) beep(1); return !s })
   const mark = async (ids, status) => {
-    try { await api.put(`/comandas/${ids[0]}`, { ids, status }); load() } catch (e) { toast(errorMessage(e), 'bad') }
+    try { await api.put(`/comandas/${ids[0]}`, { ids, status }); load(); refreshMenuBadges() } catch (e) { toast(errorMessage(e), 'bad') }
   }
   if (error && !data) return <Card><Empty icon={<MdSoupKitchen />}>{error}</Empty></Card>
   if (!data) return <div className="splash"><Spinner /></div>
