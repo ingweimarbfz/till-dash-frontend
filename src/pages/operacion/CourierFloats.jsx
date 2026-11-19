@@ -13,7 +13,9 @@ const GiveModal = ({ couriers, busyIds, onClose, onDone }) => {
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const free = couriers.filter((c) => !busyIds.includes(c.id))
+  // TD-022: el que trabaja con su propia base no recibe base de la caja.
+  const own = couriers.filter((c) => c.ownFloat)
+  const free = couriers.filter((c) => !c.ownFloat && !busyIds.includes(c.id))
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (!courierId) return setError('Elige el domiciliario.')
@@ -32,7 +34,8 @@ const GiveModal = ({ couriers, busyIds, onClose, onDone }) => {
             {free.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </Field>
-        {free.length < couriers.length && <small className="muted">Los que ya tienen una base sin liquidar no aparecen.</small>}
+        {free.length + own.length < couriers.length && <small className="muted">Los que ya tienen una base sin liquidar no aparecen.</small>}
+        {own.length > 0 && <small className="muted">Trabajan con su propia base: {own.map((c) => c.name).join(', ')}.</small>}
         <Field label="Valor de la base" htmlFor="gfa" required><MoneyInput id="gfa" value={amount} onChange={setAmount} /></Field>
         <div className="chip-list">{[20000, 50000, 100000].map((v) => <button key={v} type="button" className={`pchip${Number(amount) === v ? ' on' : ''}`} onClick={() => setAmount(v)}>{formatMoney(v)}</button>)}</div>
         <Field label="Nota" htmlFor="gfn"><input id="gfn" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. billetes de $2.000 y $5.000" /></Field>
@@ -109,7 +112,7 @@ export const FloatsCard = ({ couriers, canManage, mine, version, onChanged }) =>
   const current = modal?.settle ? open.find((r) => r.id === modal.settle) : null
   return (
     <Card title={mine ? 'Mi base de cambio' : 'Bases de cambio'} icon={<MdPayments />} subtitle={mine ? 'Al final de la jornada entregas la base más el efectivo de tus domicilios' : 'Dinero para dar cambio; se liquida con lo que traen de los domicilios'}
-      actions={canManage && couriers.length > 0 ? <button type="button" className="btn btn-sm btn-primary" onClick={() => setModal('give')}><MdAdd /> Dar base</button> : null} flush>
+      actions={canManage && couriers.some((c) => !c.ownFloat) ? <button type="button" className="btn btn-sm btn-primary" onClick={() => setModal('give')}><MdAdd /> Dar base</button> : null} flush>
       {toastNode}
       {!open.length && !settled.length ? <Empty icon={<MdPayments />}>Nadie tiene base hoy.</Empty> : (
         <div className="table-wrap"><table className="table">

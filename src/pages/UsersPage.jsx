@@ -9,8 +9,9 @@ import { ROLE_LABELS, POSITIONS, positionLabel } from '../utils/nav'
 import { usePlan } from '../context/PlanContext'
 import { formatDateTime, formatMoney } from '../utils/format'
 import { formErrors } from '../utils/validate'
+import { CourierFields, EMPTY_COURIER, courierForm, courierBody, vehicleErrors } from './operacion/courierFields'
 
-const EMPTY = { identification: '', name: '', lastName: '', username: '', email: '', phone: '', kind: 'empleado', alsoAdmin: false, alsoEmployee: false, positions: [], password: '', resetPassword: false, active: true, siteId: '', avatarUrl: null, payMode: 'ninguno', hourRate: '', overtimeRate: '', salary: '', payPeriod: 'quincenal', canManagePay: false, courierPay: 'domicilios' }
+const EMPTY = { identification: '', name: '', lastName: '', username: '', email: '', phone: '', kind: 'empleado', alsoAdmin: false, alsoEmployee: false, positions: [], password: '', resetPassword: false, active: true, siteId: '', avatarUrl: null, payMode: 'ninguno', hourRate: '', overtimeRate: '', salary: '', payPeriod: 'quincenal', canManagePay: false, courierPay: 'domicilios', ...EMPTY_COURIER }
 const ROLE_TONE = { superadmin: 'dark', admin: 'brand', empleado: 'warn', cliente: '' }
 
 // Tipo de usuario del formulario → perfiles. Un admin puede ser también empleado (p. ej. cajero) y
@@ -34,7 +35,7 @@ const UserForm = ({ initial, onClose, onSaved }) => {
   const { user: me } = useAuth()
   const editing = Boolean(initial?.id)
   const [form, setForm] = useState(editing
-    ? { ...EMPTY, ...initial, ...fromUser(initial), siteId: initial.siteId ?? '', password: '', email: initial.email || '', phone: initial.phone || '', positions: initial.positions || [], payMode: initial.payMode || 'ninguno', hourRate: initial.hourRate || '', overtimeRate: initial.overtimeRate || '', salary: initial.salary || '', payPeriod: initial.payPeriod || 'quincenal', canManagePay: initial.role === 'admin' && Boolean(initial.canManagePay), courierPay: initial.courierPay || 'domicilios' }
+    ? { ...EMPTY, ...initial, ...fromUser(initial), siteId: initial.siteId ?? '', password: '', email: initial.email || '', phone: initial.phone || '', positions: initial.positions || [], payMode: initial.payMode || 'ninguno', hourRate: initial.hourRate || '', overtimeRate: initial.overtimeRate || '', salary: initial.salary || '', payPeriod: initial.payPeriod || 'quincenal', canManagePay: initial.role === 'admin' && Boolean(initial.canManagePay), courierPay: initial.courierPay || 'domicilios', ...courierForm(initial) }
     : { ...EMPTY, siteId: getSiteFilter() || '' })
   const [sites, setSites] = useState([])
   useEffect(() => { api.get('/sedes', { params: { activas: 1, sede: undefined } }).then(({ data }) => setSites(data)).catch(() => {}) }, [])
@@ -58,11 +59,12 @@ const UserForm = ({ initial, onClose, onSaved }) => {
     if (canPay && isEmployee && form.payMode === 'turno' && !(Number(form.hourRate) > 0)) errs.push('Escribe el valor de la hora para pagarle por turnos.')
     if (canPay && isCourier && form.courierPay === 'jornada' && form.payMode === 'ninguno') errs.push('Al domiciliario por jornada elígele pago por turno o por nómina.')
     if (canPay && isEmployee && form.payMode === 'nomina' && !(Number(form.salary) > 0)) errs.push('Escribe el salario de la quincena o del mes.')
+    if (isCourier) errs.push(...vehicleErrors(form))
     if (errs.length) return setError(errs.join(' '))
     setSaving(true)
     try {
-      const { kind, alsoAdmin, alsoEmployee, payMode, hourRate, overtimeRate, salary, payPeriod, canManagePay, courierPay, ...rest } = form
-      const body = { ...rest, role: profiles[0], profiles, positions: isEmployee ? form.positions : [] }
+      const { kind, alsoAdmin, alsoEmployee, payMode, hourRate, overtimeRate, salary, payPeriod, canManagePay, courierPay, courierFloat, courierExternal, vehicleType, vehicleHasPlate, vehiclePlate, ...rest } = form
+      const body = { ...rest, role: profiles[0], profiles, positions: isEmployee ? form.positions : [], ...(isCourier ? courierBody(form) : {}) }
       if (canPay) Object.assign(body, { payMode: isEmployee ? payMode : 'ninguno', hourRate: Number(hourRate) || 0, overtimeRate: Number(overtimeRate) || 0, salary: Number(salary) || 0, payPeriod, courierPay: isCourier ? courierPay : 'domicilios' })
       if (me.role === 'superadmin') body.canManagePay = profiles[0] === 'admin' && canManagePay
       const { data } = editing ? await api.put(`/usuarios/${initial.id}`, body) : await api.post('/usuarios', body)
@@ -102,6 +104,11 @@ const UserForm = ({ initial, onClose, onSaved }) => {
             <div className="chips" style={{ gridColumn: '1 / -1' }}>
               {POSITIONS.map((p) => <button key={p} type="button" className={`btn btn-sm${form.positions.includes(p) ? ' on' : ''}`} onClick={() => togglePos(p)} aria-pressed={form.positions.includes(p)}>{positionLabel(p, distributor)}</button>)}
             </div>
+          </div>
+        )}
+        {isCourier && (
+          <div className="span-2 profile-checks">
+            <CourierFields form={form} setForm={setForm} idPrefix="uf" />
           </div>
         )}
         {me.role === 'superadmin' && profiles[0] === 'admin' && (
@@ -233,6 +240,7 @@ const UsersPage = () => {
                           {!!u.positions?.length && <><br /><small>{u.positions.map((p) => positionLabel(p, distributor)).join(', ')}</small></>}
                           {u.role === 'admin' && u.canManagePay && <><br /><small className="muted">Gestiona los pagos al personal</small></>}
                           {u.courierPay === 'jornada' && (u.positions || []).includes('domiciliario') && <><br /><small className="muted">Domiciliario por jornada</small></>}
+                          {(u.positions || []).includes('domiciliario') && <><br /><small className="muted">{[u.courierExternal ? 'Externo' : null, u.courierFloat === 'propia' ? 'Base propia' : 'Base de la empresa', u.vehicle].filter(Boolean).join(' · ')}</small></>}
                           {u.payMode === 'turno' && <><br /><small className="muted">Por turno · {formatMoney(u.hourRate)} la hora{u.overtimeRate ? ` · ${formatMoney(u.overtimeRate)} la extra` : ''}</small></>}
                           {u.payMode === 'nomina' && <><br /><small className="muted">Nómina {u.payPeriod === 'quincenal' ? 'quincenal' : 'mensual'} · {formatMoney(u.salary)}</small></>}
                           {u.site && <><br /><small>{u.site.name}</small></>}
