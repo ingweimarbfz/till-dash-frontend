@@ -6,6 +6,7 @@ import { Badge, Card, Empty, Field, Kpi, PageHead, Spinner, useToast } from '../
 import { formatDateTime, formatMoney, minutesLabel } from '../../utils/format'
 import { since, useCan } from './common'
 import { FloatsCard } from './CourierFloats'
+import { useAuth } from '../../context/AuthContext'
 import { OpenOrderModal } from './tableModals'
 
 const TONE = { por_despachar: 'warn', en_camino: 'brand', entregado: 'ok' }
@@ -23,12 +24,43 @@ const routeUrl = (origin, stops) => {
 }
 const PAY_LABEL = { efectivo: 'Efectivo', transferencia: 'Transferencia', nequi: 'Nequi', daviplata: 'Daviplata', tarjeta: 'Tarjeta', otro: 'Otro' }
 const payText = (d) => (!d.payMethod ? null : d.payMethod === 'efectivo' ? `💵 Paga en efectivo al domiciliario${d.cashWith ? ` con ${formatMoney(d.cashWith)} · llevar ${formatMoney(d.change || 0)} de cambio` : ''}` : `📲 Paga por ${PAY_LABEL[d.payMethod] || d.payMethod}${d.paid ? '' : d.mustPayFirst ? ' · cobrar antes de enviar' : ' · transfiere al llegar'}`)
+// TD-012: el domicilio lo entrega solo el domiciliario asignado (o el domiciliario que lo toma si no tiene).
+const isCourier = (user) => user?.role === 'empleado' && (user.positions || []).includes('domiciliario')
+const deliversIt = (user, courier) => isCourier(user) && (!courier || courier.id === user.id)
+// Acciones de un domicilio según su estado y quién lo mira.
+const deliveryActions = ({ user, status, courier, mustPayFirst, dispatchBlock }) => {
+  const mine = deliversIt(user, courier)
+  if (status === 'por_despachar') {
+    if (mustPayFirst) return { payFirst: true }
+    if (dispatchBlock) return { blocked: dispatchBlock }
+    if (!courier && !mine) return { blocked: 'Asígnale un domiciliario para despacharlo.' }
+    return { next: { status: 'en_camino', label: mine ? 'Salí con el pedido' : 'Salió con el pedido', icon: <MdDirectionsBike /> } }
+  }
+  if (status === 'en_camino') {
+    return { next: mine ? { status: 'entregado', label: 'Entregado', icon: <MdCheckCircle /> } : null, waiting: mine ? null : `Lo marca entregado ${courier?.name || 'el domiciliario'}.`, undo: 'por_despachar' }
+  }
+  return { undo: mine ? 'en_camino' : null }
+}
+// Cambia el estado o el domiciliario de un domicilio y avisa.
+const useDeliveryAction = (load) => {
+  const [toast, toastNode] = useToast()
+  const [busy, setBusy] = useState(false)
+  const onAction = async (d, body) => {
+    setBusy(true)
+    try {
+      if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast('Domiciliario asignado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
+      load()
+    } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
+  }
+  return { onAction, busy, toastNode }
+}
 const shareLabel = (rule) => (rule.mode === 'todo' ? 'Todo el domicilio' : `${rule.percent} % del domicilio`)
 
 // ---------- Tarjeta de un domicilio ----------
 const DeliveryCard = ({ d, data, onAction, busy }) => {
+  const { user } = useAuth()
   const city = data.origin.city
-  const next = d.deliveryStatus === 'por_despachar' ? { status: 'en_camino', label: 'Salí con el pedido', icon: <MdDirectionsBike /> } : d.deliveryStatus === 'en_camino' ? { status: 'entregado', label: 'Entregado', icon: <MdCheckCircle /> } : null
+  const act = deliveryActions({ user, status: d.deliveryStatus, courier: d.courier, mustPayFirst: d.mustPayFirst, dispatchBlock: d.dispatchBlock })
   return (
     <li className={`delivery-card st-${d.deliveryStatus}`}>
       <div className="row-between">
@@ -50,19 +82,21 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
       </div>
       <div className="row wrap" style={{ gap: 8 }}>
         {!data.mine && (
-          <select value={d.courier?.id ?? ''} onChange={(e) => onAction(d, { courierId: e.target.value ? Number(e.target.value) : null })} aria-label={`Domiciliario de ${d.number}`} disabled={busy}>
-            <option value="">Sin domiciliario</option>
+          <select value={d.courier?.id ?? ''} onChange={(e) => e.target.value && onAction(d, { courierId: Number(e.target.value) })} aria-label={`Domiciliario de ${d.number}`} disabled={busy || (Boolean(d.courier) && d.deliveryStatus !== 'por_despachar')}>
+            {!d.courier && <option value="" disabled>Elige el domiciliario</option>}
             {data.couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             {d.courier && !data.couriers.some((c) => c.id === d.courier.id) && <option value={d.courier.id}>{d.courier.name}</option>}
           </select>
         )}
         <span className="grow" />
-        {d.deliveryStatus !== 'por_despachar' && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAction(d, { status: d.deliveryStatus === 'entregado' ? 'en_camino' : 'por_despachar' })} disabled={busy} title="Deshacer"><MdUndo /></button>}
+        {act.undo && <button type="button" className="btn btn-sm btn-ghost" onClick={() => onAction(d, { status: act.undo })} disabled={busy} title="Deshacer"><MdUndo /></button>}
         <a href={mapUrl(d.address, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
-        {next && (next.status === 'en_camino' && d.mustPayFirst
-          ? <Link to={`/pedidos/${d.id}`} className="btn btn-sm" title="Se paga antes de enviar">Cobrar antes de enviar</Link>
-          : <button type="button" className="btn btn-sm btn-primary" onClick={() => onAction(d, { status: next.status })} disabled={busy}>{next.icon} {next.label}</button>)}
+        {act.payFirst && <Link to={`/pedidos/${d.id}`} className="btn btn-sm" title="Se paga antes de enviar">Cobrar antes de enviar</Link>}
+        {act.next && <button type="button" className="btn btn-sm btn-primary" onClick={() => onAction(d, { status: act.next.status })} disabled={busy}>{act.next.icon} {act.next.label}</button>}
+        {act.blocked && <button type="button" className="btn btn-sm" disabled title={act.blocked}><MdDirectionsBike /> {isCourier(user) ? 'Salí con el pedido' : 'Salió con el pedido'}</button>}
       </div>
+      {act.blocked && <small className="text-warn">{act.blocked}</small>}
+      {act.waiting && <small className="muted">{act.waiting}</small>}
     </li>
   )
 }
@@ -70,24 +104,16 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
 // ---------- Lista del día ----------
 const DayTab = ({ onPickCourier }) => {
   const can = useCan()
-  const [toast, toastNode] = useToast()
   const [day, setDay] = useState(today())
   const [courier, setCourier] = useState('')
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
-  const [busy, setBusy] = useState(false)
   const [zone, setZone] = useState('')
   const load = useCallback(() => {
     api.get('/domicilios', { params: { dia: day, domiciliario: courier || undefined } }).then(({ data: d }) => { setData(d); setError('') }).catch((e) => setError(errorMessage(e)))
   }, [day, courier])
   useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t) }, [load])
-  const onAction = async (d, body) => {
-    setBusy(true)
-    try {
-      if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast(body.courierId ? 'Domiciliario asignado' : 'Domiciliario quitado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
-      load()
-    } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
-  }
+  const { onAction, busy, toastNode } = useDeliveryAction(load)
   if (error) return <div className="alert bad">{error}</div>
   if (!data) return <div className="splash" style={{ minHeight: 200 }}><Spinner /></div>
   const t = data.totals
@@ -97,6 +123,21 @@ const DayTab = ({ onPickCourier }) => {
   const active = shown.filter((d) => d.deliveryStatus !== 'entregado')
   const stops = active.map((d) => fullAddress(d.address, data.origin.city))
   const groups = [['por_despachar', 'Por despachar'], ['en_camino', 'En camino'], ['entregado', 'Entregados']]
+  const listNode = (
+    !data.deliveries.length ? <Card><Empty icon={<MdDeliveryDining />}>{data.mine ? 'No tienes domicilios asignados este día.' : 'No hay domicilios este día.'}</Empty></Card> : (
+        <div className="delivery-cols">
+          {groups.map(([k, label]) => {
+            const list = shown.filter((d) => d.deliveryStatus === k)
+            return (
+              <section key={k}>
+                <h4 className="label-sm">{label} <Badge tone={TONE[k]}>{list.length}</Badge></h4>
+                {!list.length ? <small className="muted">Ninguno.</small> : <ul className="delivery-list">{list.map((d) => <DeliveryCard key={d.id} d={d} data={data} onAction={onAction} busy={busy} />)}</ul>}
+              </section>
+            )
+          })}
+        </div>
+      )
+  )
   return (
     <div className="stack">
       {toastNode}
@@ -112,6 +153,7 @@ const DayTab = ({ onPickCourier }) => {
         <button type="button" className="btn" onClick={load}><MdRefresh /> Actualizar</button>
         {stops.length > 0 && <a className="btn btn-primary" href={routeUrl(data.origin, stops)} target="_blank" rel="noreferrer"><MdMap /> Ruta con {stops.length > 10 ? 'las primeras 10' : `${stops.length}`} parada{stops.length === 1 ? '' : 's'}</a>}
       </div>
+      {data.mine && listNode}
       <div className="kpis">
         <Kpi label={data.mine ? 'Mis domicilios' : 'Domicilios'} value={t.deliveries} note={`${t.delivered} entregados · ${t.onTheWay} en camino · ${t.pending} por despachar`} icon={MdDeliveryDining} tone="brand" />
         <Kpi label="Valor de domicilios cobrados" value={formatMoney(t.fees)} note={shareLabel(data.rule) + ' para el domiciliario'} />
@@ -131,19 +173,7 @@ const DayTab = ({ onPickCourier }) => {
           </table></div>
         </Card>
       )}
-      {!data.deliveries.length ? <Card><Empty icon={<MdDeliveryDining />}>{data.mine ? 'No tienes domicilios asignados este día.' : 'No hay domicilios este día.'}</Empty></Card> : (
-        <div className="delivery-cols">
-          {groups.map(([k, label]) => {
-            const list = shown.filter((d) => d.deliveryStatus === k)
-            return (
-              <section key={k}>
-                <h4 className="label-sm">{label} <Badge tone={TONE[k]}>{list.length}</Badge></h4>
-                {!list.length ? <small className="muted">Ninguno.</small> : <ul className="delivery-list">{list.map((d) => <DeliveryCard key={d.id} d={d} data={data} onAction={onAction} busy={busy} />)}</ul>}
-              </section>
-            )
-          })}
-        </div>
-      )}
+      {!data.mine && listNode}
     </div>
   )
 }
@@ -227,21 +257,24 @@ const DeliveriesPage = () => {
 // ---------- Inicio del domiciliario (dashboard) ----------
 export const CourierHome = () => {
   const [data, setData] = useState(null)
-  useEffect(() => { api.get('/domicilios').then(({ data: d }) => setData(d)).catch(() => setData(false)) }, [])
+  const load = useCallback(() => { api.get('/domicilios').then(({ data: d }) => setData(d)).catch(() => setData(false)) }, [])
+  useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t) }, [load])
+  const { onAction, busy, toastNode } = useDeliveryAction(load)
   if (!data) return null
   const t = data.totals
-  const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado')
+  // Primero los que ya van en camino (para marcarlos entregados), luego los que están por salir.
+  const active = data.deliveries.filter((d) => d.deliveryStatus !== 'entregado').sort((a, b) => (a.deliveryStatus === 'en_camino' ? 0 : 1) - (b.deliveryStatus === 'en_camino' ? 0 : 1))
   return (<>
-    <Card title="Mis domicilios de hoy" icon={<MdDeliveryDining />} actions={<Link to="/domicilios" className="btn btn-sm btn-primary">Ver domicilios</Link>}>
-      <div className="usage-kpis">
-        <div><span>Por llevar</span><strong>{t.pending + t.onTheWay}</strong><small>{t.onTheWay} en camino</small></div>
+    <Card title="Mis domicilios por llevar" icon={<MdDeliveryDining />} subtitle={active.length ? `${t.onTheWay} en camino · ${t.pending} por despachar` : null} actions={<Link to="/domicilios" className="btn btn-sm">Ver todos mis domicilios</Link>}>
+      {toastNode}
+      {!active.length
+        ? <Empty icon={<MdDeliveryDining />}>No tienes domicilios por llevar. Cuando te asignen uno, aparece aquí con el botón para salir y entregarlo.</Empty>
+        : <ul className="delivery-list">{active.map((d) => <DeliveryCard key={d.id} d={d} data={data} onAction={onAction} busy={busy} />)}</ul>}
+      <div className="usage-kpis" style={{ marginTop: 12 }}>
         <div><span>Entregados</span><strong>{t.delivered}</strong><small>de {t.deliveries} asignados</small></div>
         <div><span>Me toca hoy</span><strong>{formatMoney(t.earned)}</strong><small>{formatMoney(t.share)} domicilios + {formatMoney(t.tips)} propinas</small></div>
         <div><span>Cobrar a clientes</span><strong>{formatMoney(t.toCollect)}</strong><small>Pedidos sin pagar</small></div>
       </div>
-      {active.length > 0 && <ul className="list" style={{ marginTop: 10 }}>{active.slice(0, 5).map((d) => (
-        <li key={d.id}><span><Link to={`/pedidos/${d.id}`}><strong>{d.number}</strong></Link> <small className="muted">{d.address}</small></span><Badge tone={TONE[d.deliveryStatus]}>{d.deliveryStatusLabel}</Badge></li>
-      ))}</ul>}
     </Card>
     <FloatsCard couriers={[]} canManage={false} mine />
   </>)
@@ -256,7 +289,10 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
   const [busy, setBusy] = useState(false)
   const [payFirst, setPayFirst] = useState(true)
   useEffect(() => { api.get('/domicilios').then(({ data }) => { setCouriers(data.couriers || []); setCity(data.origin?.city || ''); setPayFirst(data.rule?.timing !== 'al_entregar') }).catch(() => {}) }, [])
+  const { user } = useAuth()
   const st = order.deliveryStatus || 'por_despachar'
+  const mustPayFirst = Boolean(order.deliveryPayMethod && order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst)
+  const flow = deliveryActions({ user, status: st, courier: order.courier, mustPayFirst, dispatchBlock: order.dispatchBlock })
   const act = async (url, body, msg) => {
     setBusy(true)
     try { await api.post(url, body); toast(msg); onChanged() } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
@@ -268,8 +304,8 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
         <a className="delivery-address" href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer"><MdPlace /> <span>{order.customerAddress}</span></a>
         {order.customerPhone && <a href={`tel:${order.customerPhone}`} className="muted"><MdPhone /> {order.customerName ? `${order.customerName} · ` : ''}{order.customerPhone}</a>}
         {canAssign ? (
-          <Field label="Domiciliario" htmlFor="dbx"><select id="dbx" value={order.courier?.id ?? ''} disabled={busy} onChange={(e) => act(`/domicilios/${order.id}/asignar`, { courierId: e.target.value ? Number(e.target.value) : null }, 'Domiciliario actualizado')}>
-            <option value="">Sin domiciliario</option>
+          <Field label="Domiciliario" htmlFor="dbx"><select id="dbx" value={order.courier?.id ?? ''} disabled={busy || (Boolean(order.courier) && st !== 'por_despachar')} onChange={(e) => e.target.value && act(`/domicilios/${order.id}/asignar`, { courierId: Number(e.target.value) }, 'Domiciliario actualizado')}>
+            {!order.courier && <option value="" disabled>Elige el domiciliario</option>}
             {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             {order.courier && !couriers.some((c) => c.id === order.courier.id) && <option value={order.courier.id}>{order.courier.name}</option>}
           </select></Field>
@@ -278,9 +314,12 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
         {order.deliveryPayMethod && <small className={order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst ? 'text-warn' : 'muted'}><b>{order.deliveryPayMethod === 'efectivo' ? `💵 Paga en efectivo al domiciliario${order.deliveryCashWith ? ` con ${formatMoney(order.deliveryCashWith)} · llevar ${formatMoney(Math.max(0, order.deliveryCashWith - order.total))} de cambio` : ''}` : `📲 Paga por ${PAY_LABEL[order.deliveryPayMethod]}${order.status !== 'abierto' ? '' : payFirst ? ' · cobrar antes de enviar' : ' · transfiere al llegar'}`}</b></small>}
         <div className="row wrap" style={{ gap: 8 }}>
           <a href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer" className="btn btn-sm"><MdMap /> Ruta</a>
-          {st === 'por_despachar' && !(order.deliveryPayMethod && order.deliveryPayMethod !== 'efectivo' && order.status === 'abierto' && payFirst) && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: 'en_camino' }, 'En camino')}><MdDirectionsBike /> Salió</button>}
-          {st === 'en_camino' && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: 'entregado' }, 'Entregado')}><MdCheckCircle /> Entregado</button>}
+          {flow.undo && <button type="button" className="btn btn-sm btn-ghost" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.undo }, 'Estado actualizado')} title="Deshacer"><MdUndo /></button>}
+          {flow.next && <button type="button" className="btn btn-sm btn-primary" disabled={busy} onClick={() => act(`/domicilios/${order.id}/estado`, { status: flow.next.status }, flow.next.status === 'entregado' ? 'Entregado' : 'En camino')}>{flow.next.icon} {flow.next.label}</button>}
+          {flow.blocked && <button type="button" className="btn btn-sm" disabled title={flow.blocked}><MdDirectionsBike /> Salió</button>}
         </div>
+        {flow.blocked && <small className="text-warn">{flow.blocked}</small>}
+        {flow.waiting && <small className="muted">{flow.waiting}</small>}
       </div>
     </Card>
   )
