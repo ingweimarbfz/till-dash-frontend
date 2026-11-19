@@ -5,13 +5,14 @@ import api, { errorMessage } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { Badge, Card, Empty, Field, Modal, PageHead, Spinner, useToast } from '../../components/ui'
 import { AREAS, PALETTE } from './common'
+import { SitePicker, siteNamesOf, useSites } from '../../components/forms'
 
 const ADMIN = ['superadmin', 'admin']
 const EMOJIS = ['🍺', '🍹', '🍷', '🥃', '☕', '🥤', '🍔', '🍕', '🌮', '🍟', '🥗', '🍝', '🥩', '🍣', '🍰', '🍨', '🛒', '🚬']
 const AREA_HINT = { cocina: 'Los pedidos van a la pantalla de cocina', bar: 'Los pedidos van a la barra', barista: 'Los pedidos van al barista', ninguna: 'Se entrega directo (empacados, cigarrillos…)' }
 
 const CategoryForm = ({ initial, onClose, onSaved }) => {
-  const [f, setF] = useState({ name: '', description: '', emoji: '', color: PALETTE[0], area: 'cocina', sortOrder: 0, showInMenu: true, active: true, ...(initial || {}) })
+  const [f, setF] = useState({ name: '', description: '', emoji: '', color: PALETTE[0], area: 'cocina', sortOrder: 0, showInMenu: true, active: true, siteIds: [], ...(initial || {}) })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e?.target ? (e.target.type === 'checkbox' ? e.target.checked : e.target.value) : e }))
@@ -39,6 +40,7 @@ const CategoryForm = ({ initial, onClose, onSaved }) => {
         <Field label="Área de preparación" htmlFor="ca" hint={AREA_HINT[f.area]}><select id="ca" value={f.area} onChange={set('area')}>{Object.entries(AREAS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field label="Orden en la carta" htmlFor="co" hint="Menor número, más arriba"><input id="co" type="number" value={f.sortOrder} onChange={set('sortOrder')} /></Field>
         <div className="span-2"><Field label="Descripción" htmlFor="cd"><input id="cd" value={f.description || ''} onChange={set('description')} /></Field></div>
+        <SitePicker value={f.siteIds || []} onChange={(v) => setF((x) => ({ ...x, siteIds: v }))} hint="Sin elegir ninguna, la categoría y sus productos se venden en todas las sucursales." />
         <label className="check"><input type="checkbox" checked={f.showInMenu} onChange={set('showInMenu')} /> Mostrar en la carta</label>
         {f.id && <label className="check"><input type="checkbox" checked={f.active} onChange={set('active')} /> Activa</label>}
         {error && <div className="alert bad span-2">{error}</div>}
@@ -55,6 +57,7 @@ const CategoriesPage = () => {
   const [modal, setModal] = useState(null)
   const [toast, toastNode] = useToast()
   const [params, setParams] = useSearchParams()
+  const sites = useSites()
   const load = useCallback(() => { api.get('/inventario/categorias').then(({ data }) => setRows(data)).catch((e) => { setRows([]); toast(errorMessage(e), 'bad') }) }, [toast])
   useEffect(() => { load() }, [load])
   useEffect(() => { if (params.get('nueva') && admin) { setModal({}); setParams({}, { replace: true }) } }, [params, setParams, admin])
@@ -72,7 +75,7 @@ const CategoriesPage = () => {
             <div className="grow">
               <strong>{c.name}</strong>
               <small>{c.products ?? 0} producto{c.products === 1 ? '' : 's'} · {c.areaLabel}</small>
-              <span className="badges">{!c.showInMenu && <Badge tone="muted">No sale en la carta</Badge>}{!c.active && <Badge tone="muted">Inactiva</Badge>}</span>
+              <span className="badges">{c.siteIds?.length > 0 && sites.length > 1 && <Badge tone="info">{siteNamesOf(sites, c.siteIds)}</Badge>}{!c.showInMenu && <Badge tone="muted">No sale en la carta</Badge>}{!c.active && <Badge tone="muted">Inactiva</Badge>}</span>
             </div>
             {admin && <button type="button" className="btn btn-ghost btn-icon" aria-label={`Editar ${c.name}`} onClick={() => setModal(c)}><MdEdit /></button>}
           </div>

@@ -1,7 +1,8 @@
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { MdPhotoCamera, MdPhotoLibrary, MdDelete, MdMyLocation, MdPictureAsPdf, MdReceipt, MdAttachFile } from 'react-icons/md'
 import { fileToDataUrl } from '../utils/image'
 import { Spinner } from './ui'
+import api from '../api/client'
 
 // Campo de dinero: muestra separadores de miles y entrega un número.
 export const MoneyInput = ({ value, onChange, id, placeholder = '0', ...rest }) => {
@@ -129,6 +130,59 @@ export const ReceiptInput = ({ value, onChange, required = false }) => {
       {error && <small className="error">{error}</small>}
       <input ref={cam} type="file" accept="image/*" capture="environment" hidden onChange={pick} />
       <input ref={file} type="file" accept="image/*,application/pdf" hidden onChange={pick} />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------- Sucursales (TD-024)
+// Sucursales activas del establecimiento, cargadas una sola vez por sesión de la página.
+let sitesCache = null
+export const useSites = () => {
+  const [sites, setSites] = useState(sitesCache || [])
+  useEffect(() => {
+    if (sitesCache) return
+    api.get('/sedes', { params: { activas: 1, sede: undefined } })
+      .then(({ data }) => { sitesCache = (data || []).map((s) => ({ id: s.id, name: s.name })); setSites(sitesCache) }).catch(() => {})
+  }, [])
+  return sites
+}
+export const siteNamesOf = (sites, ids) => (!ids?.length ? 'Todas las sucursales' : ids.map((id) => sites.find((s) => s.id === id)?.name).filter(Boolean).join(', ') || 'Todas las sucursales')
+
+// Elegir en qué sucursales aplica: ninguna elegida = todas. Con una sola sucursal no se muestra.
+export const SitePicker = ({ value = [], onChange, label = 'Sucursales', hint = 'Sin elegir ninguna, aplica en todas las sucursales.' }) => {
+  const sites = useSites()
+  if (sites.length < 2) return null
+  const toggle = (id) => onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id])
+  return (
+    <div className="span-2">
+      <span className="label-sm">{label} {value.length ? '' : '· todas'}</span>
+      <div className="chip-list" style={{ marginTop: 6 }}>
+        <button type="button" className={`pchip${value.length ? '' : ' on'}`} onClick={() => onChange([])}>Todas</button>
+        {sites.map((s) => <button key={s.id} type="button" className={`pchip${value.includes(s.id) ? ' on' : ''}`} onClick={() => toggle(s.id)}>{s.name}</button>)}
+      </div>
+      {hint && <small className="muted block" style={{ marginTop: 4 }}>{hint}</small>}
+    </div>
+  )
+}
+
+// Precio del producto en cada sucursal: vacío = el precio general.
+export const SitePrices = ({ value = [], onChange, basePrice, siteIds = [] }) => {
+  const sites = useSites()
+  if (sites.length < 2) return null
+  const shown = siteIds.length ? sites.filter((s) => siteIds.includes(s.id)) : sites
+  const priceOf = (id) => value.find((x) => x.siteId === id)?.price ?? ''
+  const setPrice = (id, price) => onChange([...value.filter((x) => x.siteId !== id), ...(price === '' ? [] : [{ siteId: id, price }])])
+  return (
+    <div className="span-2">
+      <span className="label-sm">Precio por sucursal (opcional)</span>
+      <small className="muted block" style={{ marginBottom: 6 }}>Déjalo vacío para usar el precio general{basePrice ? ` (${Number(basePrice).toLocaleString('es-CO')})` : ''}.</small>
+      <div className="form-grid">
+        {shown.map((s) => (
+          <label key={s.id} className="field"><span className="label-sm">{s.name}</span>
+            <MoneyInput value={priceOf(s.id)} onChange={(v) => setPrice(s.id, v)} placeholder={basePrice ? Number(basePrice).toLocaleString('es-CO') : '0'} aria-label={`Precio en ${s.name}`} />
+          </label>
+        ))}
+      </div>
     </div>
   )
 }

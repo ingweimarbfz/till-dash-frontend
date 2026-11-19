@@ -90,10 +90,13 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
 
   const load = useCallback(() => api.get(`/pedidos/${id}`, { params: { sede: undefined } }).then(({ data }) => setO(data)).catch((e) => setError(errorMessage(e))), [id])
   useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t) }, [load])
+  // TD-024: solo lo que se vende en la sucursal del pedido, con su precio y sus promociones.
+  const orderSite = o?.siteId
   useEffect(() => {
-    api.get('/inventario/categorias', { params: { activas: 1 } }).then(({ data }) => setCategories(data.filter((c) => c.showInMenu || c.products))).catch(() => {})
-    api.get('/inventario/productos', { params: { activos: 1, sede: undefined } }).then(({ data }) => setProducts(data.filter((p) => p.price > 0))).catch(() => {})
-  }, [])
+    if (!orderSite) return
+    api.get('/inventario/categorias', { params: { activas: 1, venta: orderSite } }).then(({ data }) => setCategories(data.filter((c) => c.showInMenu || c.products))).catch(() => {})
+    api.get('/inventario/productos', { params: { activos: 1, sede: undefined, venta: orderSite } }).then(({ data }) => setProducts(data.filter((p) => (p.salePrice ?? p.price) > 0))).catch(() => {})
+  }, [orderSite])
 
   const shown = useMemo(() => {
     const f = q.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -178,7 +181,7 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
                 <button key={p.id} type="button" className="prod-tile" onClick={() => add(p)} style={{ '--cat': p.categoryColor || 'var(--brand)' }}>
                   {p.photoUrl ? <img src={p.photoUrl} alt="" /> : <span className="prod-emoji">{p.categoryEmoji || '🍽️'}</span>}
                   <strong>{p.name}</strong>
-                  <span className="prod-price">{p.promo ? <><s>{formatMoney(p.price)}</s> <b style={{ color: p.promo.color }}>{formatMoney(p.finalPrice)}</b></> : formatMoney(p.price)}</span>
+                  <span className="prod-price">{p.promo ? <><s>{formatMoney(p.salePrice ?? p.price)}</s> <b style={{ color: p.promo.color }}>{formatMoney(p.finalPrice)}</b></> : formatMoney(p.salePrice ?? p.price)}</span>
                   {p.promo && <span className="prod-promo" style={{ background: p.promo.color }}>{p.promo.emoji} {p.promo.tag || p.promo.name}</span>}
                   {/* TD-016: lo que vence pronto se recomienda al cliente (y se vende primero el lote que vence antes). */}
                   {p.expiry?.expiresOn && <span className={`prod-expiry ${p.expiry.status}`} title={`Lote más próximo: vence el ${p.expiry.expiresOn.split('-').reverse().join('/')}`}>⏳ Recomiéndalo · {p.expiry.days === 0 ? 'vence hoy' : `${p.expiry.days} d`}</span>}
