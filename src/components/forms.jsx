@@ -142,7 +142,7 @@ export const useSites = () => {
   useEffect(() => {
     if (sitesCache) return
     api.get('/sedes', { params: { activas: 1, sede: undefined } })
-      .then(({ data }) => { sitesCache = (data || []).map((s) => ({ id: s.id, name: s.name })); setSites(sitesCache) }).catch(() => {})
+      .then(({ data }) => { sitesCache = (data || []).map((s) => ({ id: s.id, name: s.name, isMain: Boolean(s.isMain) })); setSites(sitesCache) }).catch(() => {})
   }, [])
   return sites
 }
