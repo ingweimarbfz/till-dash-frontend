@@ -284,7 +284,7 @@ const UsersPage = () => {
                         <td><div className="person"><Avatar user={u} size="sm" /><div><strong>{u.fullName}</strong><small>{u.username} · {u.identification}</small></div></div></td>
                         <td>
                           <span className="badges">{(u.profiles || [u.role]).map((r) => <Badge key={r} tone={ROLE_TONE[r]}>{ROLE_LABELS[r]}</Badge>)}</span>
-                          {!!u.positions?.length && <><br /><small>{u.positions.map((p, i) => <React.Fragment key={p}>{i > 0 && ', '}{p === 'domiciliario' ? <Badge tone="info">{positionLabel(p, distributor)}{u.courierExternal ? ' externo' : ''}</Badge> : positionLabel(p, distributor)}</React.Fragment>)}</small></>}
+                          {!!u.positions?.length && <><br /><small>{u.positions.map((p, i) => <React.Fragment key={p}>{i > 0 && ', '}{p === 'domiciliario' ? <Badge tone="info">🛵 {positionLabel(p, distributor)}{u.courierExternal ? ' externo' : ''}</Badge> : positionLabel(p, distributor)}</React.Fragment>)}</small></>}
                           {u.role === 'admin' && u.canManagePay && <><br /><small className="muted">Gestiona los pagos al personal</small></>}
                           {u.courierPay === 'jornada' && (u.positions || []).includes('domiciliario') && <><br /><small className="muted">Domiciliario por jornada</small></>}
                           {(u.positions || []).includes('domiciliario') && <><br /><small className="muted">{[u.courierFloat === 'propia' ? 'Base propia' : 'Base de la empresa', u.vehicle].filter(Boolean).join(' · ')}</small></>}
