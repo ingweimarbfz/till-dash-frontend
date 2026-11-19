@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
-  MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong, MdLockReset, MdCheck, MdClose
+  MdPointOfSale, MdLockOpen, MdLock, MdAdd, MdRemove, MdAccountBalance, MdHistory, MdEdit, MdArrowUpward, MdArrowDownward, MdReceiptLong, MdLockReset, MdCheck, MdClose, MdVolunteerActivism
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { ShiftExpenseModal, FundsRequestModal, ShiftExpensesCard, RequestsTab } from './shiftExpenses'
@@ -66,10 +66,9 @@ const MoveModal = ({ session, admin, onClose, onDone }) => {
         <div className="seg span-2">
           {admin && <button type="button" className={`btn btn-sm${type === 'egreso' ? ' on' : ''}`} onClick={() => setType('egreso')}><MdRemove /> Egreso</button>}
           <button type="button" className={`btn btn-sm${type === 'ingreso' ? ' on' : ''}`} onClick={() => setType('ingreso')}><MdAdd /> Ingreso</button>
-          <button type="button" className={`btn btn-sm${type === 'propina_pagada' ? ' on' : ''}`} onClick={() => setType('propina_pagada')}>Pago de propinas</button>
         </div>
         <Field label="Valor" htmlFor="mv" required><MoneyInput id="mv" value={amount} onChange={setAmount} autoFocus /></Field>
-        <Field label="Concepto" htmlFor="mc" required><input id="mc" value={note} onChange={(e) => setNote(e.target.value)} placeholder={type === 'egreso' ? 'Ej. compra de hielo' : type === 'ingreso' ? 'Ej. cambio desde la bóveda' : 'Ej. propinas del turno a meseros'} /></Field>
+        <Field label="Concepto" htmlFor="mc" required><input id="mc" value={note} onChange={(e) => setNote(e.target.value)} placeholder={type === 'egreso' ? 'Ej. compra de hielo' : 'Ej. cambio desde la bóveda'} /></Field>
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
     </Modal>
@@ -85,6 +84,13 @@ const TransferDot = ({ rows }) => {
   const bad = rows.some((t) => t.status === 'no_llego')
   return <span className={bad ? 'text-bad' : ok === rows.length ? 'text-ok' : 'text-warn'}>{ok === rows.length ? '✓' : bad ? '✕' : '○'} {ok} de {rows.length} verificada{rows.length === 1 ? '' : 's'}</span>
 }
+// ¿Recibe el pago ahora (sale del efectivo de la caja) o queda pendiente en Pagos al personal?
+const PayNow = ({ value, onChange, name }) => (
+  <div className="seg pay-now" role="group" aria-label={`Pago a ${name}`}>
+    <button type="button" className={`btn btn-sm${value ? ' on' : ''}`} onClick={() => onChange(true)} aria-pressed={value}>Lo recibe ahora</button>
+    <button type="button" className={`btn btn-sm${!value ? ' on' : ''}`} onClick={() => onChange(false)} aria-pressed={!value}>Queda pendiente</button>
+  </div>
+)
 const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
   const [counted, setCounted] = useState('')
   // Transferencias (TD-017): se confirma en la cuenta o el celular que llegaron. Las que no se revisen quedan por verificar.
@@ -94,75 +100,53 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
   const trPending = transfers.totals?.pendiente || { count: 0, amount: 0 }
   const [nextFloat, setNextFloat] = useState(session.openingAmount || '')
   const [note, setNote] = useState('')
-  const [staff, setStaff] = useState(null)
-  const [tips, setTips] = useState({})
-  // Domiciliarios: su parte de los domicilios cobrados en el turno más las propinas de sus entregas.
+  // Domiciliarios: su parte de los domicilios cobrados en el turno. Sus propinas se pagan en Caja → Propinas.
   const [cour, setCour] = useState(null)
   const [courPay, setCourPay] = useState({})
-  const [showAll, setShowAll] = useState(false)
+  const [courNow, setCourNow] = useState({})
+  // Empleados que se pagan por turno: horas × valor de la hora; pagar ahora o dejar pendiente.
+  const [crew, setCrew] = useState(null)
+  const [shifts, setShifts] = useState({})
+  const [showCrew, setShowCrew] = useState(false)
   const [force, setForce] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   useEffect(() => {
-    api.get(`/caja/turnos/${session.id}/propinas`, { params: { sede: undefined } }).then(({ data }) => {
-      setStaff(data)
-      setTips(Object.fromEntries(data.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested])))
-    }).catch(() => setStaff({ total: 0, employees: [] }))
     api.get(`/caja/turnos/${session.id}/domiciliarios`).then(({ data }) => {
       setCour(data); setCourPay(Object.fromEntries(data.rows.map((r) => [r.userId, r.suggested])))
     }).catch(() => setCour({ rows: [], total: 0 }))
+    api.get(`/caja/turnos/${session.id}/personal`).then(({ data }) => {
+      setCrew(data)
+      setShifts(Object.fromEntries(data.employees.filter((x) => x.worked).map((x) => [x.id, { hours: data.hours, amount: Math.round(data.hours * x.hourRate), now: true }])))
+    }).catch(() => setCrew({ hours: 0, employees: [] }))
   }, [session.id])
-  const courTotal = Object.values(courPay).reduce((a, v) => a + (Number(v) || 0), 0)
-  const tipTotal = Object.values(tips).reduce((a, v) => a + (Number(v) || 0), 0)
+  // Por horas: horas × valor de la hora + horas extra × valor de la hora extra. Valor fijo: se escribe el valor.
+  const num = (v) => Number(String(v ?? '').replace(',', '.')) || 0
+  const shiftAmount = (x, v) => (v.fixed ? v.amount : Math.round(num(v.hours) * x.hourRate + num(v.extra) * (x.overtimeRate || x.hourRate)))
+  const newShift = (x) => ({ hours: crew.hours, extra: '', fixed: false, amount: Math.round(crew.hours * x.hourRate), now: true })
+  const toggleShift = (x) => setShifts((t) => { const n = { ...t }; if (n[x.id]) delete n[x.id]; else n[x.id] = newShift(x); return n })
+  const patchShift = (x, patch) => setShifts((t) => { const v = { ...t[x.id], ...patch }; return { ...t, [x.id]: { ...v, amount: shiftAmount(x, v) } } })
+  const staffNow = Object.values(shifts).filter((v) => v.now).reduce((a, v) => a + (Number(v.amount) || 0), 0)
+  const staffLater = Object.values(shifts).filter((v) => !v.now).reduce((a, v) => a + (Number(v.amount) || 0), 0)
+  const crewShown = crew ? crew.employees.filter((x) => showCrew || x.worked || shifts[x.id]) : []
+  const courTotal = Object.entries(courPay).filter(([id]) => courNow[id] !== false).reduce((a, [, v]) => a + (Number(v) || 0), 0)
+  const courLater = Object.entries(courPay).filter(([id]) => courNow[id] === false).reduce((a, [, v]) => a + (Number(v) || 0), 0)
   const cnt = counted === '' ? null : Number(counted)
   const diff = cnt === null ? null : cnt - summary.expectedCash
-  const toVault = cnt === null ? null : cnt - tipTotal - courTotal - (Number(nextFloat) || 0)
-  const picked = Object.keys(tips).map(Number)
-  // Propinas para repartir: las del turno menos las de domicilios con domiciliario (a él se le pagan abajo).
-  const tipPool = staff ? Math.round(staff.total) : summary.tips
-  const courierTips = Math.max(0, summary.tips - tipPool)
-  // Quien solo es domiciliario no entra en el reparto de propinas del salón.
-  const eligible = staff ? staff.employees.filter((x) => !(x.positions.length && x.positions.every((p) => p === 'domiciliario'))) : []
-  const shown = eligible.filter((x) => showAll || x.served || picked.includes(x.id))
-  // Reparto: en grupo (partes iguales, con bonificación opcional al mejor calificado) o individual (lo de sus mesas).
-  const [mode, setMode] = useState('individual')
-  const [bonusOn, setBonusOn] = useState(false)
-  const [bonusPct, setBonusPct] = useState('20')
-  const score = (x) => (x.rating ? x.rating.avg * 100 + x.rating.count : x.ratingMonth ? x.ratingMonth.avg * 100 - 1000 + x.ratingMonth.count : -1e9)
-  const groupIds = (ids) => ids || (picked.length > 1 ? picked : shown.map((x) => x.id))
-  const best = staff && mode === 'grupo' ? staff.employees.filter((x) => groupIds().includes(x.id) && (x.rating || x.ratingMonth)).sort((a, b) => score(b) - score(a))[0] || null : null
-  const split = (opts = {}) => {
-    const ids = groupIds(opts.ids)
-    if (!ids.length) return
-    const on = opts.bonusOn ?? bonusOn
-    const pctV = Math.max(0, Math.min(200, Number(String(opts.bonusPct ?? bonusPct).replace(',', '.')) || 0))
-    const top = on && ids.length > 1 ? (opts.best ?? (staff.employees.filter((x) => ids.includes(x.id) && (x.rating || x.ratingMonth)).sort((a, b) => score(b) - score(a))[0] || null)) : null
-    const w = ids.map((id) => (top && id === top.id ? 1 + pctV / 100 : 1))
-    const sumW = w.reduce((a, x) => a + x, 0)
-    const parts = ids.map((id, i) => Math.floor(tipPool * w[i] / sumW))
-    const rest = tipPool - parts.reduce((a, x) => a + x, 0)
-    const iTop = top ? ids.indexOf(top.id) : 0
-    parts[iTop >= 0 ? iTop : 0] += rest
-    setTips(Object.fromEntries(ids.map((id, i) => [id, parts[i]])))
-  }
-  // En grupo, la propina se reparte entre todos los que aparecen en la lista (marca o desmarca para ajustar).
-  const toGroup = () => { setMode('grupo'); split({ ids: shown.map((x) => x.id) }) }
-  const toggle = (id) => {
-    if (mode === 'grupo') { const ids = picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]; if (ids.length) split({ ids }); else setTips({}); return }
-    setTips((t) => { const n = { ...t }; if (id in n) delete n[id]; else n[id] = ''; return n })
-  }
-  const toIndividual = () => { setMode('individual'); setBonusOn(false); setTips(Object.fromEntries(staff.employees.filter((x) => x.suggested > 0).map((x) => [x.id, x.suggested]))) }
+  const toVault = cnt === null ? null : cnt - courTotal - staffNow - (Number(nextFloat) || 0)
   const submit = async (e) => {
     e.preventDefault(); setError('')
     if (cnt === null) return setError('Cuenta el efectivo y escribe el total.')
-    if (toVault < 0) return setError('El efectivo contado no alcanza para las propinas, los domiciliarios y la base. Ajusta los valores.')
+    if (toVault < 0) return setError('El efectivo contado no alcanza para lo que se paga ahora (domiciliarios y turnos) y la base. Deja algún pago pendiente o ajusta la base.')
     if (trPending.count && !pendingOk) {
       setPendingOk(true)
       return setError(`Quedan ${trPending.count} transferencia${trPending.count === 1 ? '' : 's'} por verificar (${formatMoney(trPending.amount)}). Si cierras así, quedan pendientes en Caja → Transferencias para revisarlas después.`)
     }
     setSaving(true)
     try {
-      const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, tips: Object.entries(tips).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), couriers: Object.entries(courPay).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), note, force })
+      const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, couriers: Object.entries(courPay).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount), payNow: courNow[userId] !== false })),
+        staff: Object.entries(shifts).filter(([, v]) => Number(v.amount) > 0).map(([userId, v]) => { const x = crew.employees.find((e) => e.id === Number(userId)); return { userId: Number(userId), hours: num(v.hours) || null, extraHours: v.fixed ? null : num(v.extra) || null, rate: x?.hourRate, extraRate: x?.overtimeRate || x?.hourRate, fixed: v.fixed, amount: Number(v.amount), payNow: v.now } }),
+        note, force })
       onDone(data)
     } catch (err) {
       const msg = errorMessage(err); setError(msg); setSaving(false)
@@ -192,6 +176,7 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
             <div><dt>Ventas y abonos en efectivo</dt><dd>{formatMoney(summary.byMethod.find((m) => m.method === 'efectivo')?.amount || 0)}</dd></div>
             <div><dt>Ingresos − egresos</dt><dd>{formatMoney(summary.income - summary.expenses)}</dd></div>
             {summary.courierFloats ? <div><dt>Bases de domiciliarios (salida − devolución)</dt><dd>{formatMoney(summary.courierFloats)}</dd></div> : null}
+            {(summary.tipsPaid || 0) + (summary.couriersPaid || 0) + (summary.staffPaid || 0) > 0 ? <div><dt>Pagos al personal y propinas</dt><dd>−{formatMoney((summary.tipsPaid || 0) + (summary.couriersPaid || 0) + (summary.staffPaid || 0))}</dd></div> : null}
             <div className="total"><dt>Efectivo esperado</dt><dd>{formatMoney(summary.expectedCash)}</dd></div>
           </dl>
           <Field label="Efectivo contado en la caja" htmlFor="cc" required><MoneyInput id="cc" value={counted} onChange={setCounted} autoFocus /></Field>
@@ -199,48 +184,59 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
         </section>
 
         <section className="close-step">
-          <h4><span>2</span> Propinas <small className="muted">· {formatMoney(tipPool)} para repartir{courierTips > 0 ? ` (+ ${formatMoney(courierTips)} de domicilios, van al domiciliario)` : ''}</small></h4>
-          {!staff ? <Spinner /> : <>
-            <div className="seg seg-wrap">
-              <button type="button" className={`btn btn-sm${mode === 'individual' ? ' on' : ''}`} onClick={toIndividual}>Individual · según sus mesas</button>
-              <button type="button" className={`btn btn-sm${mode === 'grupo' ? ' on' : ''}`} onClick={toGroup} disabled={!tipPool}>En grupo · partes iguales</button>
-              {Object.keys(tips).length > 0 && <button type="button" className="btn btn-sm btn-ghost" onClick={() => setTips({})}>Ninguna</button>}
-            </div>
-            {mode === 'grupo' && (
-              <div className="tip-bonus">
-                <label className="check"><input type="checkbox" checked={bonusOn} disabled={!best} onChange={(e) => { setBonusOn(e.target.checked); split({ bonusOn: e.target.checked }) }} />
-                  <span><strong>Dar más propina al mejor calificado</strong><small className="block muted">{best ? `${best.name} · ${(best.rating || best.ratingMonth).avg} ★ (${(best.rating || best.ratingMonth).count} calificaciones${best.rating ? ' en el turno' : ' en 30 días'})` : 'Aún no hay calificaciones del personal elegido.'}</small></span>
-                </label>
-                {bonusOn && best && <div className="input-prefix bonus-pct"><span>+</span><input inputMode="decimal" value={bonusPct} onChange={(e) => { setBonusPct(e.target.value); split({ bonusPct: e.target.value }) }} aria-label="Porcentaje adicional" /><i aria-hidden="true">%</i></div>}
-                <button type="button" className="btn btn-sm" onClick={() => split()}>Recalcular</button>
-              </div>
-            )}
-            <ul className="tip-list">
-              {shown.map((x) => (
-                <li key={x.id} className={x.id in tips ? 'on' : ''}>
-                  <label className="check"><input type="checkbox" checked={x.id in tips} onChange={() => toggle(x.id)} /> <span><strong>{x.name}</strong>{best?.id === x.id && bonusOn && <Badge tone="brand">+{bonusPct} %</Badge>}<small className="block muted">{x.positions.length ? x.positions.join(', ') : x.role}{x.suggested > 0 ? ` · ${formatMoney(x.suggested)} de sus mesas` : ''}{(x.rating || x.ratingMonth) ? ` · ${(x.rating || x.ratingMonth).avg} ★` : ''}</small></span></label>
-                  {x.id in tips && <MoneyInput id={`tip-${x.id}`} value={tips[x.id]} onChange={(v) => setTips((t) => ({ ...t, [x.id]: v }))} aria-label={`Propina para ${x.name}`} />}
-                </li>
-              ))}
-              {!shown.length && <li className="muted"><small>Nadie atendió pedidos con propina en este turno.</small></li>}
-            </ul>
-            {eligible.length > shown.length && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAll(true)}>Ver todo el personal ({eligible.length})</button>}
-            <div className="row-between"><span className="muted">Total a pagar en efectivo</span><strong className="money">{formatMoney(tipTotal)}</strong></div>
-            {tipTotal > tipPool && <small className="text-warn">Repartes más de lo que dejaron de propina en el turno.</small>}
-          </>}
+          <h4><span>2</span> Pagos al personal</h4>
+          <div className="alert info tip-later">
+            <MdVolunteerActivism aria-hidden="true" />
+            <span>Los clientes dejaron <strong>{formatMoney(summary.tips)}</strong> de propina en este turno. Las propinas ya no se pagan al cerrar: quedan acumuladas y se pagan cuando se quiera en <Link to="/propinas">Pagos al personal</Link>.</span>
+          </div>
           {cour?.rows.length > 0 && (
             <div className="courier-close">
-              <h5>🛵 Domiciliarios <small className="muted">· {cour.rule.mode === 'todo' ? 'les toca todo el domicilio' : `les toca el ${cour.rule.percent} % del domicilio`} + propinas de sus entregas</small></h5>
+              <h5>🛵 Domiciliarios <small className="muted">· {cour.rule.mode === 'todo' ? 'les toca todo el domicilio' : `les toca el ${cour.rule.percent} % del domicilio`} · sus propinas se pagan en Pagos al personal</small></h5>
               <ul className="tip-list">{cour.rows.map((r) => (
                 <li key={r.userId} className="on">
-                  <span><strong>{r.name}</strong><small className="block muted">{r.deliveries} domicilio{r.deliveries === 1 ? '' : 's'} · {formatMoney(r.share)} de {formatMoney(r.fees)} en domicilios{r.tips > 0 ? ` · ${formatMoney(r.tips)} propinas` : ''}</small></span>
-                  <MoneyInput id={`cour-${r.userId}`} value={courPay[r.userId] ?? ''} onChange={(v) => setCourPay((t) => ({ ...t, [r.userId]: v }))} aria-label={`Pago a ${r.name}`} />
+                  <span><strong>{r.name}</strong><small className="block muted">{r.deliveries} domicilio{r.deliveries === 1 ? '' : 's'} · {formatMoney(r.share)} de {formatMoney(r.fees)} en domicilios{r.tips > 0 ? ` · ${formatMoney(r.tips)} de propina, se pagan aparte` : ''}</small></span>
+                  <div className="pay-row">
+                    <MoneyInput id={`cour-${r.userId}`} value={courPay[r.userId] ?? ''} onChange={(v) => setCourPay((t) => ({ ...t, [r.userId]: v }))} aria-label={`Pago a ${r.name}`} />
+                    <PayNow name={r.name} value={courNow[r.userId] !== false} onChange={(v) => setCourNow((t) => ({ ...t, [r.userId]: v }))} />
+                  </div>
                 </li>
               ))}</ul>
-              <div className="row-between"><span className="muted">Total a domiciliarios en efectivo</span><strong className="money">{formatMoney(courTotal)}</strong></div>
+              <div className="row-between"><span className="muted">Se pagan ahora en efectivo{courLater ? ` · ${formatMoney(courLater)} pendientes` : ''}</span><strong className="money">{formatMoney(courTotal)}</strong></div>
               {cour.businessShare > 0 && <small className="muted">Al negocio le quedan {formatMoney(cour.businessShare)} de los domicilios.</small>}
             </div>
           )}
+          {crew?.employees.length > 0 && (
+            <div className="courier-close">
+              <h5>🕒 Turnos <small className="muted">· por horas (horas × valor de la hora + horas extra) o un valor fijo</small></h5>
+              <ul className="tip-list">{crewShown.map((x) => {
+                const v = shifts[x.id]
+                return (
+                  <li key={x.id} className={v ? 'on' : ''}>
+                    <label className="check"><input type="checkbox" checked={Boolean(v)} onChange={() => toggleShift(x)} /> <span><strong>{x.name}</strong><small className="block muted">{formatMoney(x.hourRate)} la hora{x.overtimeRate ? ` · ${formatMoney(x.overtimeRate)} la extra` : ''}{x.positions.length ? ` · ${x.positions.join(', ')}` : ''}</small></span></label>
+                    {v && <>
+                      <div className="seg pay-now" role="group" aria-label={`Cómo se paga el turno de ${x.name}`}>
+                        <button type="button" className={`btn btn-sm${!v.fixed ? ' on' : ''}`} onClick={() => patchShift(x, { fixed: false })} aria-pressed={!v.fixed}>Por horas</button>
+                        <button type="button" className={`btn btn-sm${v.fixed ? ' on' : ''}`} onClick={() => patchShift(x, { fixed: true })} aria-pressed={v.fixed}>Valor fijo</button>
+                      </div>
+                      <div className="pay-row">
+                        {!v.fixed && <>
+                          <label className="input-prefix hours-in" title="Horas del turno"><input inputMode="decimal" value={v.hours} onChange={(e) => patchShift(x, { hours: e.target.value })} aria-label={`Horas de ${x.name}`} /><i aria-hidden="true">h</i></label>
+                          <label className="input-prefix hours-in extra" title="Horas extra"><span>+</span><input inputMode="decimal" value={v.extra} placeholder="0" onChange={(e) => patchShift(x, { extra: e.target.value })} aria-label={`Horas extra de ${x.name}`} /><i aria-hidden="true">h ext.</i></label>
+                          <strong className="money shift-total">{formatMoney(v.amount)}</strong>
+                        </>}
+                        {v.fixed && <MoneyInput id={`shift-${x.id}`} value={v.amount} onChange={(a) => setShifts((t) => ({ ...t, [x.id]: { ...t[x.id], amount: a } }))} aria-label={`Valor fijo del turno de ${x.name}`} />}
+                      </div>
+                      {!v.fixed && num(v.extra) > 0 && <small className="muted">{num(v.hours)} h × {formatMoney(x.hourRate)} + {num(v.extra)} h extra × {formatMoney(x.overtimeRate || x.hourRate)}{x.overtimeRate ? '' : ' (sin valor de hora extra configurado, se usa el normal)'}</small>}
+                      <PayNow name={x.name} value={v.now} onChange={(now) => setShifts((t) => ({ ...t, [x.id]: { ...t[x.id], now } }))} />
+                    </>}
+                  </li>
+                )
+              })}</ul>
+              {crew.employees.length > crewShown.length && <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowCrew(true)}>Ver todos los que se pagan por turno ({crew.employees.length})</button>}
+              <div className="row-between"><span className="muted">Se pagan ahora en efectivo{staffLater ? ` · ${formatMoney(staffLater)} pendientes` : ''}</span><strong className="money">{formatMoney(staffNow)}</strong></div>
+            </div>
+          )}
+          {(courLater + staffLater) > 0 && <small className="muted">Lo pendiente ({formatMoney(courLater + staffLater)}) se paga después en <Link to="/propinas?tab=pendientes">Pagos al personal</Link>.</small>}
         </section>
 
         <section className="close-step">
@@ -249,7 +245,7 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
           <div className={`vault-box${toVault !== null && toVault < 0 ? ' bad' : ''}`}>
             <span>Pasa a la bóveda</span>
             <strong>{toVault === null ? '—' : formatMoney(toVault)}</strong>
-            <small>{cnt === null ? 'Escribe el efectivo contado' : `${formatMoney(cnt)} contado − ${formatMoney(tipTotal)} propinas${courTotal ? ` − ${formatMoney(courTotal)} domiciliarios` : ''} − ${formatMoney(Number(nextFloat) || 0)} base`}</small>
+            <small>{cnt === null ? 'Escribe el efectivo contado' : `${formatMoney(cnt)} contado${staffNow ? ` − ${formatMoney(staffNow)} turnos` : ''}${courTotal ? ` − ${formatMoney(courTotal)} domiciliarios` : ''} − ${formatMoney(Number(nextFloat) || 0)} base`}</small>
           </div>
           <Field label="Observaciones del cierre" htmlFor="cn"><textarea id="cn" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. faltante por un billete falso, se pagó el hielo con caja" /></Field>
         </section>
@@ -282,7 +278,7 @@ const ReopenModal = ({ session, admin, onClose, onDone }) => {
     <Modal title={`${admin ? 'Reabrir' : 'Pedir reabrir'} el turno ${session.number}`} onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="reopen-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLockReset />} {admin ? 'Reabrir turno' : 'Enviar solicitud'}</button></>}>
       <form id="reopen-form" className="stack" style={{ gap: 12 }} onSubmit={submit} noValidate>
-        <div className="alert warn">Al reabrir se anula el cierre: vuelven a la caja los {formatMoney(snap.toVault)} que pasaron a la bóveda, las propinas pagadas ({formatMoney(snap.tipsPaid)}) y la base que quedaba. Corrige lo necesario y cierra el turno de nuevo.</div>
+        <div className="alert warn">Al reabrir se anula el cierre: vuelven a la caja los {formatMoney(snap.toVault)} que pasaron a la bóveda, {snap.tipsPaid > 0 ? `las propinas pagadas en ese cierre (${formatMoney(snap.tipsPaid)}), ` : ''}lo pagado a los domiciliarios y por turnos en ese cierre, y la base que quedaba. Lo pagado en Pagos al personal no se anula. Corrige lo necesario y cierra el turno de nuevo.</div>
         <Field label="Motivo de la reapertura" htmlFor="rr" required hint={admin ? 'Queda en la auditoría y se avisa por Telegram.' : 'El administrador recibe la solicitud con este motivo.'}>
           <textarea id="rr" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus placeholder="Ej. registré un pago en efectivo que fue por Nequi; conté mal los billetes de 50.000" />
         </Field>

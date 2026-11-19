@@ -96,7 +96,7 @@ const SettingsPage = () => {
                 <button type="button" className={`btn btn-sm${form.deliveryTransferTiming === 'al_entregar' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, deliveryTransferTiming: 'al_entregar' }))}>Paga cuando llega el pedido</button>
               </div>
             </Field>
-            <Field label="¿Qué le toca al domiciliario?" htmlFor="csm" hint="Se le paga al cerrar la caja, junto con las propinas de sus entregas. Lo que no le toca queda como venta del negocio.">
+            <Field label="¿Qué le toca al domiciliario?" htmlFor="csm" hint="Se le paga al cerrar la caja; las propinas de sus entregas se le pagan en Propinas. Lo que no le toca queda como venta del negocio.">
               <div className="seg seg-wrap">
                 <button type="button" className={`btn btn-sm${(form.courierShareMode || 'todo') === 'todo' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, courierShareMode: 'todo' }))}>Todo el domicilio</button>
                 <button type="button" className={`btn btn-sm${form.courierShareMode === 'porcentaje' ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, courierShareMode: 'porcentaje' }))}>Un porcentaje</button>
