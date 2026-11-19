@@ -83,7 +83,7 @@ const TransferDot = ({ rows }) => {
   if (!rows.length) return null
   const ok = rows.filter((t) => t.status === 'verificada').length
   const bad = rows.some((t) => t.status === 'no_llego')
-  return <small className={bad ? 'text-bad' : ok === rows.length ? 'text-ok' : 'text-warn'}> · {ok} de {rows.length} verificada{rows.length === 1 ? '' : 's'}</small>
+  return <span className={bad ? 'text-bad' : ok === rows.length ? 'text-ok' : 'text-warn'}>{ok === rows.length ? '✓' : bad ? '✕' : '○'} {ok} de {rows.length} verificada{rows.length === 1 ? '' : 's'}</span>
 }
 const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
   const [counted, setCounted] = useState('')
@@ -180,7 +180,7 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
             {!summary.byMethod.length ? <small className="muted">No hubo cobros en este turno.</small> : (
               <dl className="order-totals" style={{ margin: 0 }}>
                 {[...summary.byMethod].sort((a, b) => (a.method === 'efectivo' ? -1 : b.method === 'efectivo' ? 1 : b.amount - a.amount)).map((x) => (
-                  <div key={x.method}><dt>{x.label || x.method}{x.method !== 'efectivo' && <small className="muted"> · no entra a la caja</small>}{TRANSFER_METHODS.includes(x.method) && transfers.rows && <TransferDot rows={transfers.rows.filter((t) => t.method === x.method)} />}</dt><dd>{formatMoney(x.amount)}</dd></div>
+                  <div key={x.method} className="pay-line"><dt><span>{x.label || x.method}</span>{x.method !== 'efectivo' && <small className="pay-note"><span>No entra a la caja</span>{TRANSFER_METHODS.includes(x.method) && transfers.rows && <TransferDot rows={transfers.rows.filter((t) => t.method === x.method)} />}</small>}</dt><dd>{formatMoney(x.amount)}</dd></div>
                 ))}
                 <div className="total"><dt>Total cobrado</dt><dd>{formatMoney(summary.byMethod.reduce((a, x) => a + x.amount, 0))}</dd></div>
               </dl>
