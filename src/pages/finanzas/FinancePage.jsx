@@ -5,7 +5,7 @@ import {
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Kpi, Modal, PageHead, Spinner, Field, useToast } from '../../components/ui'
-import { MoneyInput, Tabs } from '../../components/forms'
+import { MoneyInput, Tabs, useSites } from '../../components/forms'
 import { Bars, Ranking, Share } from '../../components/charts'
 import { useAuth } from '../../context/AuthContext'
 import { formatDate, formatDateTime, formatMoney } from '../../utils/format'
@@ -55,7 +55,7 @@ const FundSelect = ({ id, funds, value, onChange, label = 'Fondo', hint }) => {
 }
 
 const EntryModal = ({ funds, partners, initialFund = 'general', kinds, methods, onClose, onDone }) => {
-  const [f, setF] = useState({ fund: initialFund, kind: 'capital', partnerId: '', amount: '', method: 'efectivo', receivedOn: bogota(), description: '' })
+  const [f, setF] = useState({ fund: /^v/.test(String(initialFund)) ? 'general' : initialFund, kind: 'capital', partnerId: '', amount: '', method: 'efectivo', receivedOn: bogota(), description: '' })
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? v.target.value : v }))
   const submit = async (e) => {
@@ -70,7 +70,7 @@ const EntryModal = ({ funds, partners, initialFund = 'general', kinds, methods, 
     <Modal title="Ingresar dinero" onClose={onClose}
       footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="entry-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdAdd />} Ingresar</button></>}>
       <form id="entry-form" className="form-grid" onSubmit={submit} noValidate>
-        <div className="span-2"><FundSelect id="ef" funds={funds} value={f.fund} onChange={set('fund')} label="¿A qué fondo entra?" hint="General: el dinero del negocio. Sucursal: de ahí sale la base para abrir sus cajas." /></div>
+        <div className="span-2"><FundSelect id="ef" funds={principals(funds)} value={f.fund} onChange={set('fund')} label="¿A qué fondo entra?" hint="General: el dinero de todas las sucursales. Una sede: entra a su fondo y de ahí sale la base para abrir sus cajas." /></div>
         <div className="span-2 chip-list">{Object.entries(kinds).map(([k, l]) => <button key={k} type="button" className={`pchip${f.kind === k ? ' on' : ''}`} onClick={() => set('kind')(k)}>{l}</button>)}</div>
         {f.kind === 'aporte_socio' && (
           <div className="span-2"><Field label="Socio" htmlFor="ep" required hint={active.length ? null : 'Primero crea los socios en la pestaña Socios.'}>
@@ -115,8 +115,14 @@ const TransferModal = ({ funds, initial = {}, onClose, onDone }) => {
 }
 
 const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onClose, onDone }) => {
-  const [f, setF] = useState({ category: '', description: '', supplierId: null, supplier: '', invoiceRef: '', amount: '', paidOn: bogota(), source: 'fondo', fund: 'general', sessionId: '', partnerId: '', ...initial })
+  const startFund = initial.fund || 'general'
+  const startScope = funds.find((x) => x.key === startFund)?.parentKey || startFund
+  const [f, setF] = useState({ category: '', description: '', supplierId: null, supplier: '', invoiceRef: '', amount: '', paidOn: bogota(), source: 'fondo', fund: startFund, sessionId: '', partnerId: '', ...initial, scope: startScope })
   const sub = funds.find((x) => x.key === f.fund && x.kind === 'subcuenta')
+  // TD-038: primero la sede del gasto (todas = fondo general); de ahí salen las cuentas y las cajas que se pueden usar.
+  const scopeFunds = funds.filter((x) => x.active !== false && (x.key === f.scope || (x.kind === 'subcuenta' && x.parentKey === f.scope)))
+  const scopeSite = f.scope === 'general' ? null : Number(f.scope)
+  const setScope = (v) => setF((x) => ({ ...x, scope: v, fund: v, sessionId: '' }))
   const [sessions, setSessions] = useState([])
   const [error, setError] = useState(''); const [saving, setSaving] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v?.target ? v.target.value : v }))
@@ -124,7 +130,8 @@ const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onCl
   const submit = async (e) => {
     e.preventDefault(); setError(''); setSaving(true)
     try {
-      const { data } = await api.post('/finanzas/gastos', { ...f, siteId: f.fund === 'general' || sub ? null : Number(f.fund) }, { params: NO_SITE })
+      const fund = f.source === 'fondo' ? f.fund : f.scope
+      const { data } = await api.post('/finanzas/gastos', { ...f, fund, siteId: f.source === 'fondo' && sub ? null : scopeSite }, { params: NO_SITE })
       onDone(data)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
@@ -139,18 +146,27 @@ const ExpenseModal = ({ funds, partners, categories, sources, initial = {}, onCl
         <Field label="Factura o soporte" htmlFor="xi"><input id="xi" value={f.invoiceRef} onChange={set('invoiceRef')} placeholder="N.º de factura" /></Field>
         <Field label="Fecha de pago" htmlFor="xp"><input id="xp" type="date" value={f.paidOn} max={bogota()} onChange={set('paidOn')} /></Field>
         <div />
+        <Field label="¿De qué sede es el gasto?" htmlFor="xsc" hint={f.scope === 'general' ? 'De todas las sucursales: sale del fondo general' : 'Solo de esta sede: sale de su fondo o de sus cajas'}>
+          <select id="xsc" value={f.scope} onChange={(e) => setScope(e.target.value)}>
+            {principals(funds).map((p) => <option key={p.key} value={p.key}>{p.key === 'general' ? 'Todas las sucursales (general)' : p.name}</option>)}
+          </select>
+        </Field>
+        <div />
         <div className="span-2">
           <span className="label-sm">¿Con qué se pagó?</span>
           <div className="chip-list" style={{ marginTop: 6 }}>{Object.entries(sources).map(([k, l]) => <button key={k} type="button" className={`pchip${f.source === k ? ' on' : ''}`} onClick={() => set('source')(k)}>{l}</button>)}</div>
         </div>
-        {(f.source === 'fondo' || f.source === 'banco' || f.source === 'socio') && (
-          <FundSelect id="xf" funds={f.source === 'fondo' ? funds.filter((x) => x.active !== false) : principals(funds)} value={f.source !== 'fondo' && sub ? sub.parentKey : f.fund} onChange={set('fund')} label={f.source === 'fondo' ? 'Sale de' : 'Gasto de'} hint={f.source === 'fondo' ? 'Cuenta principal o una subcuenta' : 'General o de una sucursal (para los reportes)'} />
+        {f.source === 'fondo' && (
+          <FundSelect id="xf" funds={scopeFunds} value={f.fund} onChange={set('fund')} label="Sale de" hint={scopeFunds.length > 1 ? 'Cuenta principal de la sede o una de sus subcuentas' : null} />
         )}
-        {f.source === 'caja' && (
-          <Field label="Turno de caja abierto" htmlFor="xt" required hint={sessions.length ? 'Sale en efectivo de esa caja' : 'No hay cajas abiertas'}>
-            <select id="xt" value={f.sessionId} onChange={set('sessionId')}><option value="">Elige el turno</option>{sessions.map((s) => <option key={s.id} value={s.id}>{s.register} · {s.number}{s.site ? ` · ${s.site}` : ''}</option>)}</select>
-          </Field>
-        )}
+        {f.source === 'caja' && (() => {
+          const list = scopeSite ? sessions.filter((s) => Number(s.siteId) === scopeSite) : sessions
+          return (
+            <Field label="Turno de caja abierto" htmlFor="xt" required hint={!list.length ? (scopeSite ? 'Esta sede no tiene cajas abiertas' : 'No hay cajas abiertas') : scopeSite ? 'Sale en efectivo de esa caja' : 'Sale en efectivo de esa caja; el gasto queda en la sede de la caja'}>
+              <select id="xt" value={f.sessionId} onChange={set('sessionId')}><option value="">Elige el turno</option>{list.map((s) => <option key={s.id} value={s.id}>{s.register} · {s.number}{s.site ? ` · ${s.site}` : ''}</option>)}</select>
+            </Field>
+          )
+        })()}
         {f.source === 'socio' && (
           <Field label="Socio que lo pagó" htmlFor="xso" required hint="Queda como aporte del socio">
             <select id="xso" value={f.partnerId} onChange={set('partnerId')}><option value="">Elige el socio</option>{partners.filter((p) => p.active).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
@@ -447,9 +463,23 @@ const Accounts = ({ range, rangeNode, version, onPick }) => {
   )
 }
 
+// TD-038: filtro por sede en gastos e ingresos: todas, solo lo general o una sede.
+const ScopeFilter = ({ value, onChange }) => {
+  const sites = useSites()
+  if (sites.length < 2) return null
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} aria-label="Sede">
+      <option value="">Todas las sedes</option>
+      <option value="general">General (todas las sucursales)</option>
+      {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+    </select>
+  )
+}
+
 const Expenses = ({ range, rangeNode, version, onNew, onVoid }) => {
   const [r, setR] = useState(null); const [cat, setCat] = useState(''); const [q, setQ] = useState(''); const [error, setError] = useState('')
-  useEffect(() => { api.get('/finanzas/gastos', { params: { desde: range.from, hasta: range.to, categoria: cat || undefined, q: q || undefined } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [range, cat, q, version])
+  const [scope, setScope] = useState('')
+  useEffect(() => { api.get('/finanzas/gastos', { params: { desde: range.from, hasta: range.to, categoria: cat || undefined, q: q || undefined, fondo: scope || undefined, ...NO_SITE } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [range, cat, q, scope, version])
   return (
     <div className="stack">
       {rangeNode}
@@ -461,6 +491,7 @@ const Expenses = ({ range, rangeNode, version, onNew, onVoid }) => {
             {r.byCategory.slice(0, 3).map((c) => <Kpi key={c.key} label={c.label} value={formatMoney(c.total)} />)}
           </div>
           <Card title="Gastos" flush actions={<div className="card-actions">
+            <ScopeFilter value={scope} onChange={setScope} />
             <select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Categoría"><option value="">Todas las categorías</option>{Object.entries(r.categories).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
             <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar" aria-label="Buscar gasto" />
             <button type="button" className="btn btn-sm" onClick={() => download(`gastos-${range.from}_a_${range.to}`, [['Número', 'number'], ['Fecha', 'paidOn'], ['Categoría', 'categoryLabel'], ['Descripción', 'description'], ['Proveedor', 'supplier'], ['Factura', 'invoiceRef'], ['Sucursal', 'site'], ['Pagado con', 'sourceLabel'], ['Valor', 'amount'], ['Estado', 'status']], r.rows)}>Excel</button>
@@ -468,11 +499,12 @@ const Expenses = ({ range, rangeNode, version, onNew, onVoid }) => {
           </div>}>
             {!r.rows.length ? <Empty icon={<MdTrendingDown />}>No hay gastos en este rango.</Empty> : (
               <div className="table-wrap"><table className="table">
-                <thead><tr><th>Fecha</th><th>Gasto</th><th>Categoría</th><th>Pagado con</th><th className="num">Valor</th><th /></tr></thead>
+                <thead><tr><th>Fecha</th><th>Gasto</th><th>Sede</th><th>Categoría</th><th>Pagado con</th><th className="num">Valor</th><th /></tr></thead>
                 <tbody>{r.rows.map((x) => (
                   <tr key={x.id} className={x.status === 'anulado' ? 'voided' : ''}>
                     <td><small>{formatDate(x.paidOn)}</small></td>
-                    <td><strong>{x.description}</strong><br /><small className="muted">{x.number}{x.supplier ? ` · ${x.supplier}` : ''}{x.invoiceRef ? ` · Fact. ${x.invoiceRef}` : ''} · {x.site}</small></td>
+                    <td><strong>{x.description}</strong><br /><small className="muted">{x.number}{x.supplier ? ` · ${x.supplier}` : ''}{x.invoiceRef ? ` · Fact. ${x.invoiceRef}` : ''}</small></td>
+                    <td><small>{x.siteId ? x.site : 'General'}</small></td>
                     <td>{x.categoryLabel}</td>
                     <td><small>{x.sourceLabel}{x.session ? ` · ${x.session}` : ''}{x.partner ? ` · ${x.partner}` : ''}</small></td>
                     <td className="num money">{formatMoney(x.amount)}</td>
@@ -490,13 +522,14 @@ const Expenses = ({ range, rangeNode, version, onNew, onVoid }) => {
 
 const Entries = ({ range, rangeNode, version, onNew, onVoid }) => {
   const [r, setR] = useState(null); const [error, setError] = useState('')
-  useEffect(() => { api.get('/finanzas/ingresos', { params: { desde: range.from, hasta: range.to, ...NO_SITE } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [range, version])
+  const [scope, setScope] = useState('')
+  useEffect(() => { api.get('/finanzas/ingresos', { params: { desde: range.from, hasta: range.to, fondo: scope || undefined, ...NO_SITE } }).then(({ data }) => setR(data)).catch((e) => setError(errorMessage(e))) }, [range, scope, version])
   return (
     <div className="stack">
       {rangeNode}
       {error && <div className="alert bad">{error}</div>}
       <Card title="Ingresos de dinero" subtitle="Capital, aportes de socios, préstamos y otros ingresos que no son ventas" flush
-        actions={<button type="button" className="btn btn-sm btn-primary" onClick={() => onNew('general')}><MdAdd /> Ingresar dinero</button>}>
+        actions={<div className="card-actions"><ScopeFilter value={scope} onChange={setScope} /><button type="button" className="btn btn-sm btn-primary" onClick={() => onNew(scope || 'general')}><MdAdd /> Ingresar dinero</button></div>}>
         {!r ? <Spinner /> : !r.rows.length ? <Empty icon={<MdSavings />}>No hay ingresos de dinero en este rango.</Empty> : (
           <div className="table-wrap"><table className="table">
             <thead><tr><th>Fecha</th><th>Ingreso</th><th>Fondo</th><th>Forma</th><th className="num">Valor</th><th /></tr></thead>
@@ -578,6 +611,12 @@ const PayableModal = ({ payable, funds, partners, sources, onClose, onDone }) =>
         <div className="span-2"><strong>{payable.supplier}</strong> · {payable.description}<br /><small className="muted">Total {formatMoney(payable.amount)} · abonado {formatMoney(payable.paid)} · pendiente <strong>{formatMoney(payable.pending)}</strong></small></div>
         <Field label="Valor del abono" htmlFor="cpa" required><MoneyInput id="cpa" value={f.amount} onChange={set('amount')} /></Field>
         <Field label="Fecha de pago" htmlFor="cpd"><input id="cpd" type="date" value={f.paidOn} max={bogota()} onChange={set('paidOn')} /></Field>
+        <Field label="¿De qué sede es el gasto?" htmlFor="xsc" hint={f.scope === 'general' ? 'De todas las sucursales: sale del fondo general' : 'Solo de esta sede: sale de su fondo o de sus cajas'}>
+          <select id="xsc" value={f.scope} onChange={(e) => setScope(e.target.value)}>
+            {principals(funds).map((p) => <option key={p.key} value={p.key}>{p.key === 'general' ? 'Todas las sucursales (general)' : p.name}</option>)}
+          </select>
+        </Field>
+        <div />
         <div className="span-2">
           <span className="label-sm">¿Con qué se pagó?</span>
           <div className="chip-list" style={{ marginTop: 6 }}>{Object.entries(sources).map(([k, l]) => <button key={k} type="button" className={`pchip${f.source === k ? ' on' : ''}`} onClick={() => set('source')(k)}>{l}</button>)}</div>
