@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MdAdd, MdDelete, MdPointOfSale, MdWarningAmber, MdPrint } from 'react-icons/md'
+import { MdAdd, MdDelete, MdPointOfSale, MdWarningAmber, MdPrint, MdCallSplit } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useSettings } from '../../context/SettingsContext'
 import { Field, Modal, Spinner } from '../../components/ui'
 import { MoneyInput } from '../../components/forms'
 import { formatMoney } from '../../utils/format'
 import { PAY_METHODS } from './common'
-import { orderTicket } from '../../utils/ticket'
+import { orderTicket, splitTickets } from '../../utils/ticket'
+import SplitBill from './SplitBill'
 
 const round = (v) => Math.round(Number(v) || 0)
 
@@ -34,6 +35,9 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(null)
+  // Cuenta dividida entre personas (TD-014): SplitBill reporta las partes, los pagos de cada una y si cuadra.
+  const [splitOn, setSplitOn] = useState(false)
+  const [split, setSplit] = useState(null)
 
   useEffect(() => {
     api.get('/descuentos').then(({ data }) => setDiscounts(data.filter((d) => d.active))).catch(() => {})
@@ -49,10 +53,13 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const tip = !tipOn ? 0 : tipMode === 'pct' ? round(base * tipPct / 100) : round(tipCustom)
   const fee = isDelivery && feeOn ? round(feeValue) : 0
   const total = base + tip + fee
-  const paid = pays.reduce((a, p) => a + round(p.amount), 0)
+  const splitting = splitOn && split
+  // Pagos efectivos: los de la cuenta única o los de todas las personas (con el índice de quién paga).
+  const allPays = splitting ? split.persons.flatMap((p, n) => p.pays.map((x) => ({ ...x, person: n }))) : pays
+  const paid = allPays.reduce((a, p) => a + round(p.amount), 0)
   const left = total - paid
-  const hasCxc = pays.some((p) => p.method === 'cuenta_por_cobrar')
-  const cash = pays.filter((p) => p.method === 'efectivo')
+  const hasCxc = allPays.some((p) => p.method === 'cuenta_por_cobrar')
+  const cash = allPays.filter((p) => p.method === 'efectivo')
   const change = cash.reduce((a, p) => a + Math.max(0, round(p.received) - round(p.amount)), 0)
 
   // El primer pago se ajusta solo al total mientras haya una sola forma de pago.
@@ -63,32 +70,44 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
 
   const submit = async (e) => {
     e.preventDefault(); setError('')
+    if (splitting && split.error) return setError(split.error)
     if (left !== 0) return setError(left > 0 ? `Faltan ${formatMoney(left)} por asignar a una forma de pago.` : `Los pagos superan el total en ${formatMoney(-left)}.`)
     if (disc?.requiresReason && !reason.trim()) return setError(`Escribe el motivo del descuento "${disc.name}".`)
     if (isDelivery && feeOn && !(fee > 0)) return setError('Escribe el valor del domicilio o desmarca la casilla.')
-    if (hasCxc && !cxc.customerName.trim()) return setError('Escribe a nombre de quién queda la cuenta por cobrar.')
-    const needsSession = pays.some((p) => p.method !== 'cuenta_por_cobrar')
+    // Dividida: si nadie escribió el nombre, la cuenta por cobrar queda a nombre de quien la pidió.
+    const cxcData = hasCxc && splitting && !cxc.customerName.trim() ? { ...cxc, customerName: split.persons[allPays.find((p) => p.method === 'cuenta_por_cobrar').person].name } : cxc
+    if (hasCxc && !cxcData.customerName.trim()) return setError('Escribe a nombre de quién queda la cuenta por cobrar.')
+    const needsSession = allPays.some((p) => p.method !== 'cuenta_por_cobrar')
     if (needsSession && !sessionId) return setError('No hay un turno de caja abierto en esta sucursal.')
     setSaving(true)
     try {
       const { data } = await api.post(`/pedidos/${order.id}/cobrar`, {
         sessionId: Number(sessionId) || undefined, tip, deliveryFee: isDelivery ? fee : undefined, discountId: disc?.id, discountReason: reason,
-        payments: pays.map((p) => ({ method: p.method, amount: round(p.amount), received: p.method === 'efectivo' && p.received !== '' ? round(p.received) : undefined, reference: p.reference })),
-        receivable: hasCxc ? cxc : undefined
+        payments: allPays.map((p) => ({ method: p.method, amount: round(p.amount), received: p.method === 'efectivo' && p.received !== '' ? round(p.received) : undefined, reference: p.reference, person: splitting ? p.person : undefined })),
+        receivable: hasCxc ? cxcData : undefined,
+        split: splitting ? { mode: split.mode, persons: split.persons.map((p) => ({ name: p.name, amount: p.amount, items: p.items })) } : undefined
       })
-      setDone({ ...data, tip, fee, discount: discountTotal, total, payments: pays.map((p) => ({ label: PAY_METHODS[p.method] || p.method, amount: round(p.amount) })) })
+      setDone({
+        ...data, tip, fee, discount: discountTotal, total, payments: allPays.map((p) => ({ label: `${splitting ? `${split.persons[p.person].name} · ` : ''}${PAY_METHODS[p.method] || p.method}`, amount: round(p.amount) })),
+        split: splitting ? { mode: split.mode, persons: split.persons.map((p) => ({ ...p, change: p.pays.filter((x) => x.method === 'efectivo').reduce((a, x) => a + Math.max(0, round(x.received) - round(x.amount)), 0) })) } : null
+      })
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
   }
 
   if (done) {
     return (
       <Modal title={`Pedido ${done.number} cobrado`} onClose={() => onCharged(done)}
-        footer={<><button type="button" className="btn" onClick={() => orderTicket({ o: order, settings, kind: 'cuenta', tip: done.tip, tipPct: tipMode === 'pct' ? tipPct : null, discount: done.discount, deliveryFee: done.fee, total: done.total, payments: done.payments })}><MdPrint /> Imprimir tiquete</button><button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button></>}>
+        footer={<>{done.split && <button type="button" className="btn" onClick={() => splitTickets({ o: order, settings, persons: done.split.persons, mode: done.split.mode, kind: 'cuenta', tip: done.tip, payLabels: PAY_METHODS })}><MdPrint /> Tiquete por persona</button>}<button type="button" className="btn" onClick={() => orderTicket({ o: order, settings, kind: 'cuenta', tip: done.tip, tipPct: tipMode === 'pct' ? tipPct : null, discount: done.discount, deliveryFee: done.fee, total: done.total, payments: done.payments })}><MdPrint /> Imprimir tiquete</button><button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button></>}>
         <div className="charge-done">
           <span className="charge-ok"><MdPointOfSale /></span>
           <strong>{formatMoney(done.total)}</strong>
           {done.change > 0 && <div className="charge-change">Cambio: <b>{formatMoney(done.change)}</b></div>}
           {done.receivable && <small>Quedó la cuenta por cobrar {done.receivable}.</small>}
+          {done.split && (
+            <div className="split-done">
+              {done.split.persons.map((p) => <div key={p.name}><span><b>{p.name}</b>{p.change > 0 && <small className="muted"> · cambio {formatMoney(p.change)}</small>}</span><span className="money">{formatMoney(p.amount)}</span></div>)}
+            </div>
+          )}
         </div>
       </Modal>
     )
@@ -96,7 +115,7 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
 
   return (
     <Modal size="lg" title={`Cobrar ${order.table || order.typeLabel} · ${order.number}`} onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="charge-form" className="btn btn-primary" disabled={saving || sessions === null}>{saving ? <Spinner /> : <MdPointOfSale />} Cobrar {formatMoney(total)}</button></>}>
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button>{splitting && <button type="button" className="btn" disabled={!split.persons.every((p) => p.amount > 0)} onClick={() => splitTickets({ o: order, settings, persons: split.persons, mode: split.mode, tip })}><MdPrint /> Precuenta por persona</button>}<button type="submit" form="charge-form" className="btn btn-primary" disabled={saving || sessions === null}>{saving ? <Spinner /> : <MdPointOfSale />} Cobrar {formatMoney(total)}</button></>}>
       <form id="charge-form" className="charge" onSubmit={submit} noValidate>
         <div className="stack" style={{ gap: 14 }}>
           {sessions && !sessions.length && <div className="alert warn"><MdWarningAmber /> No hay un turno de caja abierto en esta sucursal. <Link to="/caja">Abrir turno</Link>. Solo puedes dejarlo como cuenta por cobrar.</div>}
@@ -127,7 +146,12 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
               </div>
             )}
           </div>
-          <div className="stack" style={{ gap: 8 }}>
+          <div className="seg seg-wrap" aria-label="Quién paga">
+            <button type="button" className={`btn btn-sm${!splitOn ? ' on' : ''}`} onClick={() => setSplitOn(false)}>Una sola cuenta</button>
+            <button type="button" className={`btn btn-sm${splitOn ? ' on' : ''}`} onClick={() => setSplitOn(true)}><MdCallSplit /> Dividir entre personas</button>
+          </div>
+          {splitOn && <SplitBill order={order} total={total} onChange={setSplit} />}
+          {!splitOn && <div className="stack" style={{ gap: 8 }}>
             <strong className="label-sm">Formas de pago</strong>
             {pays.map((p, n) => (
               <div key={n} className="pay-row">
@@ -139,11 +163,11 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
                 {pays.length > 1 ? <button type="button" className="btn btn-ghost btn-icon" aria-label="Quitar pago" onClick={() => setPays(pays.filter((_, j) => j !== n))}><MdDelete /></button> : <span />}
               </div>
             ))}
-            {cash.length === 1 && pays.length === 1 && (
+            {pays.length === 1 && pays[0].method === 'efectivo' && (
               <div className="chip-list">{quick.map((v) => <button key={v} type="button" className="pchip" onClick={() => setPay(0, 'received')(v)}>{formatMoney(v)}</button>)}</div>
             )}
-            <button type="button" className="btn btn-sm btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={addPay}><MdAdd /> Dividir el pago</button>
-          </div>
+            <button type="button" className="btn btn-sm btn-ghost" style={{ alignSelf: 'flex-start' }} onClick={addPay}><MdAdd /> Otra forma de pago</button>
+          </div>}
           {hasCxc && (
             <div className="form-grid cxc-box">
               <div className="span-2"><strong className="label-sm">Cuenta por cobrar a nombre de</strong></div>

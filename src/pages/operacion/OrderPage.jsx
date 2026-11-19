@@ -91,14 +91,21 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
     return products.filter((p) => (cat === 'all' || p.categoryId === Number(cat)) && (!f || `${p.name} ${p.sku || ''}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(f)))
   }, [products, cat, q])
 
-  const add = (p) => setCart((c) => { const i = c.findIndex((x) => x.product.id === p.id && !x.note); return i >= 0 ? c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)) : [...c, { product: p, quantity: 1, note: '' }] })
+  // Un toque suma a la línea cobrada del producto; las líneas de cortesía quedan aparte.
+  const add = (p) => setCart((c) => { const i = c.findIndex((x) => x.product.id === p.id && !x.note && !x.courtesy); return i >= 0 ? c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)) : [...c, { product: p, quantity: 1, note: '' }] })
   const bump = (n, d) => setCart((c) => c.map((x, j) => (j === n ? { ...x, quantity: x.quantity + d } : x)).filter((x) => x.quantity > 0))
-  const cartTotal = cart.reduce((a, x) => a + x.quantity * (x.product.finalPrice ?? x.product.price), 0)
+  const linePrice = (x) => x.product.finalPrice ?? x.product.price
+  const cartTotal = cart.reduce((a, x) => a + (x.courtesy ? 0 : x.quantity * linePrice(x)), 0)
+  // Cortesía al agregar (TD-013): el motivo se propone con el producto más caro que sí se cobra.
+  const toggleCourtesy = (n, on) => setCart((c) => {
+    const paid = c.filter((y, j) => j !== n && !y.courtesy).sort((a, b) => linePrice(b) - linePrice(a))[0]
+    return c.map((y, j) => (j === n ? { ...y, courtesy: on, courtesyReason: on ? (y.courtesyReason || (paid ? `Cortesía con ${paid.product.name}` : 'Cortesía de la casa')) : y.courtesyReason } : y))
+  })
 
   const send = async () => {
     setSending(true)
     try {
-      const { data } = await api.post(`/pedidos/${o.id}/items`, { items: cart.map((x) => ({ productId: x.product.id, quantity: x.quantity, note: x.note })) })
+      const { data } = await api.post(`/pedidos/${o.id}/items`, { items: cart.map((x) => ({ productId: x.product.id, quantity: x.quantity, note: x.note, ...(x.courtesy ? { courtesy: true, courtesyReason: x.courtesyReason } : {}) })) })
       setO((prev) => ({ ...prev, ...data })); setCart([]); toast('Comanda enviada'); onChanged?.(); if (embedded) setPane('pedido')
     } catch (e) { toast(errorMessage(e), 'bad') }
     setSending(false)
@@ -170,12 +177,14 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
           {cart.length > 0 && (
             <Card title="Por enviar" subtitle="Revisa y envía la comanda" flush className="cart-card">
               <ul className="cart">{cart.map((x, n) => (
-                <li key={`${x.product.id}-${n}`}>
+                <li key={`${x.product.id}-${n}`} className={x.courtesy ? 'courtesy' : ''}>
                   <div className="cart-qty"><button type="button" className="btn btn-icon btn-sm" onClick={() => bump(n, -1)} aria-label="Menos"><MdRemove /></button><b>{x.quantity}</b><button type="button" className="btn btn-icon btn-sm" onClick={() => bump(n, 1)} aria-label="Más"><MdAdd /></button></div>
                   <div className="grow"><strong>{x.product.name}</strong>
                     <input className="cart-note" value={x.note} onChange={(e) => setCart((c) => c.map((y, j) => (j === n ? { ...y, note: e.target.value } : y)))} placeholder="Nota: sin hielo, término medio…" aria-label={`Nota para ${x.product.name}`} />
+                    {x.product.courtesyAllowed && <label className="cart-courtesy" title="No se cobra, pero sí sale del inventario"><input type="checkbox" checked={Boolean(x.courtesy)} onChange={(e) => toggleCourtesy(n, e.target.checked)} /> <MdCardGiftcard /> Cortesía (no se cobra)</label>}
+                    {x.courtesy && <input className="cart-note" value={x.courtesyReason || ''} onChange={(e) => setCart((c) => c.map((y, j) => (j === n ? { ...y, courtesyReason: e.target.value } : y)))} placeholder="Motivo de la cortesía" aria-label={`Motivo de la cortesía de ${x.product.name}`} maxLength={200} />}
                   </div>
-                  <span className="money">{formatMoney(x.quantity * (x.product.finalPrice ?? x.product.price))}</span>
+                  <span className="money">{x.courtesy ? <><s>{formatMoney(x.quantity * linePrice(x))}</s> $0</> : formatMoney(x.quantity * linePrice(x))}</span>
                   <button type="button" className="btn btn-ghost btn-icon btn-sm" aria-label="Quitar" onClick={() => setCart((c) => c.filter((_, j) => j !== n))}><MdDelete /></button>
                 </li>
               ))}</ul>
@@ -216,8 +225,8 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
           </Card>
 
           {!open && o.payments?.length > 0 && (
-            <Card title="Pagos" flush>
-              <ul className="list padded">{o.payments.map((p) => <li key={p.id}><span><strong>{PAY_METHODS[p.method]}</strong> <small>{[p.reference, p.change ? `cambio ${formatMoney(p.change)}` : null, p.user, formatDateTime(p.createdAt)].filter(Boolean).join(' · ')}</small></span><span className="money">{formatMoney(p.amount)}</span></li>)}</ul>
+            <Card title={o.split ? `Pagos · cuenta dividida ${o.split.label?.toLowerCase() || ''} entre ${o.split.persons?.length} personas` : 'Pagos'} flush>
+              <ul className="list padded">{o.payments.map((p) => <li key={p.id}><span><strong>{p.payer ? `${p.payer} · ` : ''}{PAY_METHODS[p.method]}</strong> <small>{[p.reference, p.change ? `cambio ${formatMoney(p.change)}` : null, p.user, formatDateTime(p.createdAt)].filter(Boolean).join(' · ')}</small></span><span className="money">{formatMoney(p.amount)}</span></li>)}</ul>
               {o.receivables?.map((r) => <div key={r.id} className="alert warn" style={{ margin: 12 }}>Cuenta por cobrar {r.number} a {r.customerName}: debe {formatMoney(r.amount - r.paid)}</div>)}
             </Card>
           )}
