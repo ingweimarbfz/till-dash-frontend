@@ -8,6 +8,7 @@ import { MoneyInput } from '../../components/forms'
 import { formatMoney } from '../../utils/format'
 import { PAY_METHODS } from './common'
 import { orderTicket, splitTickets } from '../../utils/ticket'
+import { getPrinterConfig } from '../../utils/printer'
 import SplitBill from './SplitBill'
 
 const round = (v) => Math.round(Number(v) || 0)
@@ -90,17 +91,27 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
         receivable: hasCxc ? cxcData : undefined,
         split: splitting ? { mode: split.mode, persons: split.persons.map((p) => ({ name: p.name, amount: p.amount, items: p.items })) } : undefined
       })
-      setDone({
-        ...data, tip, fee, discount: discountTotal, total, payments: allPays.map((p) => ({ label: `${splitting ? `${split.persons[p.person].name} · ` : ''}${PAY_METHODS[p.method] || p.method}`, amount: round(p.amount) })),
+      const result = {
+        ...data, tip, fee, discount: discountTotal, total, cash: cash.length > 0,
+        payments: allPays.map((p) => ({ label: `${splitting ? `${split.persons[p.person].name} · ` : ''}${PAY_METHODS[p.method] || p.method}`, amount: round(p.amount), change: p.method === 'efectivo' ? Math.max(0, round(p.received) - round(p.amount)) : 0 })),
         split: splitting ? { mode: split.mode, persons: split.persons.map((p) => ({ ...p, change: p.pays.filter((x) => x.method === 'efectivo').reduce((a, x) => a + Math.max(0, round(x.received) - round(x.amount)), 0) })) } : null
-      })
+      }
+      setDone(result)
+      // TD-018: si este computador tiene la impresión automática activada, el tiquete sale solo al cobrar.
+      if (getPrinterConfig().autoPrint) printReceipt(result)
     } catch (err) { setError(errorMessage(err)); setSaving(false) }
+  }
+
+  // Tiquete de cobro: uno por persona si la cuenta se dividió, o el de toda la cuenta.
+  function printReceipt (d, perPerson = Boolean(d.split)) {
+    if (perPerson && d.split) return splitTickets({ o: order, settings, persons: d.split.persons, mode: d.split.mode, kind: 'cuenta', tip: d.tip, payLabels: PAY_METHODS, cash: d.cash })
+    return orderTicket({ o: order, settings, kind: 'cuenta', tip: d.tip, tipPct: tipMode === 'pct' ? tipPct : null, discount: d.discount, deliveryFee: d.fee, total: d.total, payments: d.payments, cash: d.cash })
   }
 
   if (done) {
     return (
       <Modal title={`Pedido ${done.number} cobrado`} onClose={() => onCharged(done)}
-        footer={<>{done.split && <button type="button" className="btn" onClick={() => splitTickets({ o: order, settings, persons: done.split.persons, mode: done.split.mode, kind: 'cuenta', tip: done.tip, payLabels: PAY_METHODS })}><MdPrint /> Tiquete por persona</button>}<button type="button" className="btn" onClick={() => orderTicket({ o: order, settings, kind: 'cuenta', tip: done.tip, tipPct: tipMode === 'pct' ? tipPct : null, discount: done.discount, deliveryFee: done.fee, total: done.total, payments: done.payments })}><MdPrint /> Imprimir tiquete</button><button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button></>}>
+        footer={<>{done.split && <button type="button" className="btn" onClick={() => printReceipt(done, true)}><MdPrint /> Tiquete por persona</button>}<button type="button" className="btn" onClick={() => printReceipt(done, false)}><MdPrint /> {done.split ? 'Tiquete de la cuenta' : 'Imprimir tiquete'}</button><button type="button" className="btn btn-primary" onClick={() => onCharged(done)} autoFocus>Listo</button></>}>
         <div className="charge-done">
           <span className="charge-ok"><MdPointOfSale /></span>
           <strong>{formatMoney(done.total)}</strong>

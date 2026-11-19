@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { MdMenu, MdChevronRight, MdLogout, MdPerson, MdKeyboardArrowDown, MdSearch, MdPlace, MdSwapHoriz, MdWorkspacePremium } from 'react-icons/md'
+import { MdMenu, MdChevronRight, MdLogout, MdPerson, MdKeyboardArrowDown, MdSearch, MdPlace, MdSwapHoriz, MdWorkspacePremium, MdPrint } from 'react-icons/md'
 import api, { getSiteFilter, setSiteFilter } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { useSettings } from '../context/SettingsContext'
@@ -13,6 +13,7 @@ import SearchPalette, { useSearchShortcut } from '../components/SearchPalette'
 import StockAlerts from '../components/StockAlerts'
 import TableCalls from '../components/TableCalls'
 import CourierCashAlerts from '../components/CourierCashAlerts'
+import PrintNotices from '../components/PrintNotices'
 
 // Fecha corta: "Lun, 16 Nov 2026".
 const todayLabel = (() => {
@@ -63,6 +64,7 @@ const UserMenu = () => {
       {open && (
         <div className="dropdown" role="menu">
           <button type="button" onClick={() => { setOpen(false); navigate('/perfil') }}><MdPerson /> Mi perfil</button>
+          {user.role !== 'cliente' && <button type="button" onClick={() => { setOpen(false); navigate('/impresora') }}><MdPrint /> Impresora de este equipo</button>}
           {others.map((r) => <button key={r} type="button" onClick={() => { setOpen(false); switchProfile(r) }}><MdSwapHoriz /> Entrar como {ROLE_LABELS[r].toLowerCase()}</button>)}
           <hr />
           <button type="button" className="danger" onClick={logout}><MdLogout /> Cerrar sesión</button>
@@ -195,6 +197,7 @@ const AppLayout = () => {
         </main>
         {searching && <SearchPalette onClose={() => setSearching(false)} />}
         {user.role !== 'cliente' && <StockAlerts key={site || 'all'} />}
+        {user.role !== 'cliente' && <PrintNotices />}
         <div className="call-dock">
           {plan.has('carta_qr') && plan.has('mesas') && (admin || (user.role === 'empleado' && (user.positions || []).some((p) => ['mesero', 'cajero', 'host'].includes(p)))) && <TableCalls key={`calls-${site || 'all'}`} />}
           {/* TD-015: el domiciliario avisa que recibió el efectivo; lo ve el personal que puede cobrar. */}

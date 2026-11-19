@@ -12,6 +12,7 @@ import LegalGate from './components/legal/LegalGate'
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const UsersPage = lazy(() => import('./pages/UsersPage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const PrinterPage = lazy(() => import('./pages/PrinterPage'))
 const AppearancePage = lazy(() => import('./pages/AppearancePage'))
 const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 const SitesPage = lazy(() => import('./pages/sucursales/SitesPage'))
@@ -113,6 +114,7 @@ const App = () => (
               <Route path="notificaciones" element={<Protected roles={ADMIN}><NotificationsPage /></Protected>} />
               <Route path="configuracion" element={<Protected roles={ADMIN}><SettingsPage /></Protected>} />
               <Route path="configuracion/mesas" element={<Protected roles={ADMIN}><TablesConfigPage /></Protected>} />
+              <Route path="impresora" element={<Protected roles={STAFF}><PrinterPage /></Protected>} />
               <Route path="configuracion/apariencia" element={<Protected roles={OWNER}><AppearancePage /></Protected>} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>

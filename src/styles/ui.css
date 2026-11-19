@@ -1698,3 +1698,30 @@ tr.row-expired td { background: var(--bad-50); }
 .input-prefix.bonus-pct { width: 120px; flex: none; }
 .input-prefix.bonus-pct input { padding-left: 28px; padding-right: 30px; text-align: right; font-variant-numeric: tabular-nums; }
 .input-prefix.bonus-pct > i { position: absolute; right: 12px; font-style: normal; color: var(--muted); font-weight: 600; pointer-events: none; }
+
+/* ---------- Impresora (TD-018) ---------- */
+.printer-modes .btn { gap: 6px; }
+.printer-mode-note { font-size: 13px; margin: 10px 0 0; }
+.printer-agent { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
+.printer-agent .alert { align-items: center; flex-wrap: wrap; }
+.printer-agent .alert > span { flex: 1 1 260px; }
+.printer-pick { display: flex; gap: 8px; }
+.printer-pick select, .printer-pick input { flex: 1; min-width: 0; }
+.agent-install { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; border-radius: var(--radius-sm); background: var(--gray-100); }
+.agent-os { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; padding: 14px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid var(--line); }
+.agent-os h4 { margin: 0; font-size: 15px; }
+.agent-os ol { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.55; display: flex; flex-direction: column; gap: 4px; }
+.agent-os .btn { margin-top: auto; }
+.agent-cmd { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 6px; padding: 4px 4px 4px 10px; border-radius: 8px; background: var(--black); color: #7EE787; font-size: 12px; word-break: break-all; }
+.agent-cmd .btn { color: var(--white); flex-shrink: 0; margin: 0; }
+.agent-foot { grid-column: 1 / -1; margin: 0; font-size: 12.5px; }
+@media (max-width: 720px) {
+  .agent-install { grid-template-columns: 1fr; }
+  .printer-pick { flex-direction: column; }
+  .printer-pick select, .printer-pick input { flex: none; width: 100%; }
+}
+.print-notice { z-index: 3000; align-items: flex-start; max-width: min(520px, calc(100vw - 32px)); }
+.print-notice-actions { display: flex; gap: 14px; margin-top: 8px; flex-wrap: wrap; }
+.print-notice-actions button, .print-notice-actions a { background: none; border: 0; padding: 0; color: var(--white); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.print-notice-x { background: none; border: 0; color: var(--white); cursor: pointer; padding: 0; display: flex; }
+.print-notice-x svg { color: var(--white) !important; }
