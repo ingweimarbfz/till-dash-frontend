@@ -3,7 +3,7 @@ import { MdAdd, MdEdit, MdLocalOffer } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { Badge, Card, Empty, Field, Modal, PageHead, Spinner, useToast } from '../../components/ui'
-import { MoneyInput, Tabs } from '../../components/forms'
+import { MoneyInput, SitePicker, siteNamesOf, Tabs, useSites } from '../../components/forms'
 import { PromotionsTab } from './promotions'
 import { DISCOUNT_ICONS, DiscountIcon, discountValue, PALETTE } from './common'
 
@@ -11,7 +11,7 @@ const ADMIN = ['superadmin', 'admin']
 
 const DiscountForm = ({ initial, onClose, onSaved }) => {
   const editing = Boolean(initial?.id)
-  const [f, setF] = useState({ name: '', type: 'porcentaje', value: '', icon: 'tag', color: PALETTE[0], description: '', requiresReason: false, active: true, ...(initial || {}) })
+  const [f, setF] = useState({ name: '', type: 'porcentaje', value: '', icon: 'tag', color: PALETTE[0], description: '', requiresReason: false, active: true, siteIds: [], ...(initial || {}) })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const submit = async (e) => {
@@ -42,6 +42,7 @@ const DiscountForm = ({ initial, onClose, onSaved }) => {
         </Field></div>
         <div className="span-2"><Field label="Descripción" htmlFor="dd"><input id="dd" value={f.description || ''} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="A quién aplica" /></Field></div>
         <label className="check span-2"><input type="checkbox" checked={f.requiresReason} onChange={(e) => setF({ ...f, requiresReason: e.target.checked })} /> Pedir el motivo cuando se aplique</label>
+        <SitePicker value={f.siteIds || []} onChange={(v) => setF((x) => ({ ...x, siteIds: v }))} hint="Sin elegir ninguna, el descuento se puede usar en todas las sucursales." />
         {editing && <label className="check span-2"><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> Activo</label>}
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
@@ -52,6 +53,7 @@ const DiscountForm = ({ initial, onClose, onSaved }) => {
 const DiscountsTab = ({ admin, toast }) => {
   const [rows, setRows] = useState(null)
   const [modal, setModal] = useState(null)
+  const sites = useSites()
   const load = useCallback(() => { api.get('/descuentos').then(({ data }) => setRows(data)).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   return (
@@ -60,7 +62,7 @@ const DiscountsTab = ({ admin, toast }) => {
         <ul className="wh-list">{rows.map((d) => (
           <li key={d.id} style={d.active ? undefined : { opacity: 0.55 }}>
             <DiscountIcon d={d} />
-            <div className="grow"><strong>{d.name} <span className="badge" style={{ background: `${d.color}1F`, color: d.color }}>{discountValue(d)}</span></strong> {!d.active && <Badge tone="muted">Inactivo</Badge>}<small>{d.description || (d.type === 'porcentaje' ? 'Porcentaje sobre el total' : 'Valor fijo')}{d.requiresReason ? ' · pide motivo' : ''}</small></div>
+            <div className="grow"><strong>{d.name} <span className="badge" style={{ background: `${d.color}1F`, color: d.color }}>{discountValue(d)}</span></strong> {!d.active && <Badge tone="muted">Inactivo</Badge>}<small>{d.description || (d.type === 'porcentaje' ? 'Porcentaje sobre el total' : 'Valor fijo')}{d.requiresReason ? ' · pide motivo' : ''}{sites.length > 1 && d.siteIds?.length ? ` · solo en ${siteNamesOf(sites, d.siteIds)}` : ''}</small></div>
             {admin && <button type="button" className="btn btn-ghost btn-icon" aria-label={`Editar ${d.name}`} onClick={() => setModal(d)}><MdEdit /></button>}
           </li>
         ))}</ul>

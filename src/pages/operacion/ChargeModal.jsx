@@ -44,7 +44,7 @@ const ChargeModal = ({ order, tipWanted = null, onClose, onCharged }) => {
   const [split, setSplit] = useState(null)
 
   useEffect(() => {
-    api.get('/descuentos').then(({ data }) => setDiscounts(data.filter((d) => d.active))).catch(() => {})
+    api.get('/descuentos', { params: { venta: order.siteId } }).then(({ data }) => setDiscounts(data.filter((d) => d.active))).catch(() => {})
     api.get('/caja/cajas', { params: { sede: order.siteId } }).then(({ data }) => {
       const open = data.filter((r) => r.session && r.siteId === order.siteId).map((r) => r.session)
       setSessions(open); if (open.length) setSessionId(String(open[0].id))

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { MdAdd, MdEdit, MdDelete, MdSchedule, MdEvent, MdSell } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Modal, Spinner } from '../../components/ui'
-import { MoneyInput } from '../../components/forms'
+import { MoneyInput, SitePicker, siteNamesOf, useSites } from '../../components/forms'
 import { formatDateTime, formatMoney } from '../../utils/format'
 import { PALETTE } from './common'
 
@@ -53,7 +53,7 @@ export const timeLeft = (iso) => {
 // datetime-local en hora de Colombia ↔ ISO
 const toLocal = (iso) => (iso ? new Date(new Date(iso).getTime() - 5 * 3600000).toISOString().slice(0, 16) : '')
 
-const EMPTY = { name: '', tag: '', emoji: '🍻', color: '#E4572E', description: '', type: 'porcentaje', value: '', startsAt: '', endsAt: '', timeFrom: '', timeTo: '', weekdays: [], scope: 'todos', categoryIds: [], productIds: [], active: true }
+const EMPTY = { name: '', tag: '', emoji: '🍻', color: '#E4572E', description: '', type: 'porcentaje', value: '', startsAt: '', endsAt: '', timeFrom: '', timeTo: '', weekdays: [], scope: 'todos', categoryIds: [], productIds: [], siteIds: [], active: true }
 
 const PromotionForm = ({ initial, categories, products, onClose, onSaved }) => {
   const editing = Boolean(initial?.id)
@@ -127,6 +127,7 @@ const PromotionForm = ({ initial, categories, products, onClose, onSaved }) => {
           <small className="hint">{f.productIds.length} producto(s) elegido(s)</small>
         </div>}
         <div className="span-2"><Field label="Descripción" htmlFor="prd"><input id="prd" value={f.description} onChange={set('description')} placeholder="Condiciones o mensaje para el cliente" /></Field></div>
+        <SitePicker value={f.siteIds || []} onChange={(v) => setF((x) => ({ ...x, siteIds: v }))} hint="Sin elegir ninguna, la promoción aplica en todas las sucursales." />
         {editing && <label className="check span-2"><input type="checkbox" checked={f.active} onChange={set('active')} /> Activa</label>}
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
@@ -138,6 +139,7 @@ export const PromotionsTab = ({ admin, categories, products, toast, onChanged })
   const [rows, setRows] = useState(null)
   const [modal, setModal] = useState(null)
   const [filter, setFilter] = useState('todas')
+  const sites = useSites()
   const load = useCallback(() => { api.get('/promociones').then(({ data }) => setRows(data)).catch(() => setRows([])) }, [])
   useEffect(() => { load() }, [load])
   // Desde el dashboard ("Crear promoción" en un producto que se vende poco): abre la promoción con el producto elegido.
@@ -171,6 +173,7 @@ export const PromotionsTab = ({ admin, categories, products, toast, onChanged })
             <strong>{p.name}</strong>
             {p.description && <small className="muted">{p.description}</small>}
             <small><MdSchedule /> {whenText(p)}</small>
+            {sites.length > 1 && p.siteIds?.length > 0 && <small>📍 {siteNamesOf(sites, p.siteIds)}</small>}
             {p.status === 'vigente' && p.endsAt && timeLeft(p.endsAt) && <small className="text-bad">⏳ Termina en {timeLeft(p.endsAt)}</small>}
             {p.status === 'programada' && p.startsAt && <small>🕒 Empieza en {timeLeft(p.startsAt)}</small>}
             <small><MdSell /> {p.scope === 'todos' ? 'Toda la carta' : p.scope === 'categorias' ? p.categories.join(', ') : `${p.products.length} producto(s): ${p.products.slice(0, 3).join(', ')}${p.products.length > 3 ? '…' : ''}`}</small>

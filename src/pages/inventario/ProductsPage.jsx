@@ -4,7 +4,7 @@ import { MdAdd, MdEdit, MdSearch, MdRestaurantMenu, MdVisibility, MdMoveToInbox 
 import api, { errorMessage } from '../../api/client'
 import { useAuth } from '../../context/AuthContext'
 import { Badge, Card, Empty, Field, Modal, PageHead, Spinner, useToast } from '../../components/ui'
-import { MoneyInput, PhotoInput } from '../../components/forms'
+import { MoneyInput, PhotoInput, SitePicker, SitePrices, siteNamesOf, useSites } from '../../components/forms'
 import { formatMoney } from '../../utils/format'
 import { PromoTag, PromoPrice } from './promotions'
 import { AREAS, fmtQty, MovementModal, UNITS, useWarehouses, WarehouseOptions, PurchasePaymentField, usePurchaseSources, paymentError, paymentBody, paymentNote } from './common'
@@ -18,7 +18,7 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
   const editing = Boolean(initial?.id)
   const [form, setForm] = useState({
     sku: '', name: '', categoryId: '', description: '', unit: 'und', cost: '', price: '', trackStock: true, minStock: 0,
-    initialStock: 0, expiresOn: '', warehouseId: main?.id || '', payment: '', paySessionId: '', payAccount: '', photoUrl: null, gallery: [], showInMenu: true, courtesyAllowed: false, active: true, ...(initial || {})
+    initialStock: 0, expiresOn: '', warehouseId: main?.id || '', payment: '', paySessionId: '', payAccount: '', photoUrl: null, gallery: [], showInMenu: true, courtesyAllowed: false, active: true, siteIds: [], sitePrices: [], ...(initial || {})
   })
   const [loadingGallery, setLoadingGallery] = useState(editing)
   const sources = usePurchaseSources()
@@ -61,6 +61,8 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
         <Field label="Unidad de medida" htmlFor="pu"><select id="pu" value={form.unit} onChange={set('unit')}>{Object.entries(UNITS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></Field>
         <Field label="Precio de venta" htmlFor="ppr" required hint={margin !== null ? `Margen ${margin} %` : null}><MoneyInput id="ppr" value={form.price} onChange={set('price')} /></Field>
         <Field label="Costo" htmlFor="pco" hint="Se actualiza con cada entrada"><MoneyInput id="pco" value={form.cost} onChange={set('cost')} /></Field>
+        <SitePicker value={form.siteIds || []} onChange={(v) => setForm((x) => ({ ...x, siteIds: v, sitePrices: (x.sitePrices || []).filter((p) => !v.length || v.includes(p.siteId)) }))} label="Se vende en" hint="Sin elegir ninguna, se vende en todas las sucursales (si su categoría también)." />
+        <SitePrices value={form.sitePrices || []} onChange={(v) => setForm((x) => ({ ...x, sitePrices: v }))} basePrice={form.price} siteIds={form.siteIds || []} />
         <div className="span-2"><SupplierField id="psup" label="Proveedor habitual" value={form} onChange={(v) => setForm((x) => ({ ...x, supplierId: v.supplierId }))} hint="Se propone al registrar sus entradas de inventario" /></div>
         <div className="span-2"><label className="check"><input type="checkbox" checked={form.trackStock} onChange={set('trackStock')} /> Maneja inventario (desmárcalo para platos que se preparan al momento)</label></div>
         {form.trackStock && <Field label="Stock mínimo por bodega" htmlFor="pmin" hint="Al llegar aquí avisa con un toast y por Telegram"><input id="pmin" type="number" step="any" min="0" value={form.minStock} onChange={set('minStock')} /></Field>}
@@ -91,6 +93,7 @@ const ProductsPage = () => {
   const [modal, setModal] = useState(null)
   const [toast, toastNode] = useToast()
   const { sites, warehouses, main } = useWarehouses()
+  const siteList = useSites()
   const load = useCallback(() => {
     api.get('/inventario/productos').then(({ data }) => setProducts(data)).catch((e) => { setProducts([]); toast(errorMessage(e), 'bad') })
     api.get('/inventario/categorias').then(({ data }) => setCategories(data)).catch(() => setCategories([]))
@@ -132,7 +135,9 @@ const ProductsPage = () => {
                 <tr key={p.id} style={p.active ? undefined : { opacity: 0.55 }}>
                   <td><div className="person">{p.photoUrl ? <img className="thumb sq" src={p.photoUrl} alt="" /> : <span className="thumb sq">{p.categoryEmoji}</span>}<div>
                     <button type="button" className="link-btn" onClick={() => navigate(`/productos/${p.id}`)}><strong>{p.name}</strong></button>{p.promo && <> <PromoTag p={p.promo} size="sm" /></>}
-                    <small>{[p.sku, UNITS[p.unit], !p.showInMenu && 'no sale en la carta', !p.active && 'inactivo'].filter(Boolean).join(' · ')}</small>
+                    <small>{[p.sku, UNITS[p.unit], !p.showInMenu && 'no sale en la carta', !p.active && 'inactivo',
+                      siteList.length > 1 && p.siteIds?.length > 0 && `solo en ${siteNamesOf(siteList, p.siteIds)}`,
+                      siteList.length > 1 && p.sitePrices?.length > 0 && `precio propio en ${p.sitePrices.length} sucursal${p.sitePrices.length === 1 ? '' : 'es'}`].filter(Boolean).join(' · ')}</small>
                   </div></div></td>
                   <td className="hide-sm"><Badge>{p.category || 'Sin categoría'}</Badge><small className="block muted">{AREAS[p.area] || ''}</small></td>
                   {admin && <td className="num money hide-md">{formatMoney(p.cost)}</td>}
