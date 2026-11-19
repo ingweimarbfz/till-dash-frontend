@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { MdAdd, MdEdit, MdSearch, MdManageAccounts } from 'react-icons/md'
+import { MdAdd, MdEdit, MdSearch, MdManageAccounts, MdDelete } from 'react-icons/md'
 import { useSearchParams } from 'react-router-dom'
 import api, { errorMessage, getSiteFilter } from '../api/client'
 import { useAuth } from '../context/AuthContext'
@@ -30,7 +30,7 @@ const profilesOf = (f) => {
   return set
 }
 
-const UserForm = ({ initial, onClose, onSaved }) => {
+const UserForm = ({ initial, onClose, onSaved, onDeleted }) => {
   const { distributor } = usePlan()
   const { user: me } = useAuth()
   const editing = Boolean(initial?.id)
@@ -52,6 +52,13 @@ const UserForm = ({ initial, onClose, onSaved }) => {
   const canPay = Boolean(me.canManagePay)
   const kinds = KINDS.filter(([k]) => k !== 'superadmin' || me.role === 'superadmin')
 
+  // TD-029: eliminar (no al super administrador ni a uno mismo; a un administrador solo lo elimina el super administrador).
+  const canDelete = editing && initial.id !== me.id && initial.role !== 'superadmin' && (initial.role !== 'admin' || me.role === 'superadmin')
+  const remove = async () => {
+    if (!window.confirm(`¿Eliminar a ${initial.fullName}? Ya no aparecerá en Usuarios ni podrá entrar. Si tiene historial (pedidos, caja, pagos), sus registros se conservan con su nombre.`)) return // eslint-disable-line no-alert
+    setSaving(true); setError('')
+    try { const { data } = await api.delete(`/usuarios/${initial.id}`); onDeleted(initial, data.mode) } catch (err) { setError(errorMessage(err)); setSaving(false) }
+  }
   const submit = async (e) => {
     e.preventDefault()
     setError('')
@@ -78,7 +85,7 @@ const UserForm = ({ initial, onClose, onSaved }) => {
 
   return (
     <Modal size="lg" title={editing ? 'Editar usuario' : 'Nuevo usuario'} onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="user-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : null} Guardar</button></>}>
+      footer={<>{canDelete && <><button type="button" className="btn btn-ghost" onClick={remove} disabled={saving}><MdDelete /> Eliminar</button><span className="grow" /></>}<button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="user-form" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : null} Guardar</button></>}>
       <form id="user-form" onSubmit={submit} className="form-grid" noValidate>
         <div className="span-2 photo-row">
           <Field label="Foto"><PhotoInput value={form.avatarUrl} capture="user" label="Tomar o subir foto" onChange={(v) => setForm((f) => ({ ...f, avatarUrl: v }))} /></Field>
@@ -288,7 +295,7 @@ const UsersPage = () => {
               </div>
               )}
       </Card>
-      {editing && <UserForm initial={editing} onClose={() => setEditing(null)} onSaved={onSaved} />}
+      {editing && <UserForm initial={editing} onClose={() => setEditing(null)} onSaved={onSaved} onDeleted={(u) => { setUsers((list) => list.filter((x) => x.id !== u.id)); setEditing(null); toast(`${u.fullName} eliminado`) }} />}
       {toastNode}
     </div>
   )
