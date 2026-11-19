@@ -8,6 +8,7 @@ import { Tabs } from '../../components/forms'
 import { formatDateTime, formatMoney } from '../../utils/format'
 import { fmtQty, MovementModal, TransferModal, useWarehouses } from './common'
 import { notifyStock } from '../../components/StockAlerts'
+import { ExpiryTab } from './ExpiryTab'
 
 const ADMIN = ['superadmin', 'admin']
 
@@ -143,7 +144,7 @@ const MovementsTab = ({ bodega, version }) => {
                 <td className="hide-sm">{m.warehouse?.name}</td>
                 <td className={`num ${m.quantity > 0 ? 'text-ok' : 'text-bad'}`}><strong>{m.quantity > 0 ? '+' : ''}{fmtQty(m.quantity, m.product?.unit)}</strong></td>
                 <td className="num hide-sm">{m.stockAfter === null ? '—' : fmtQty(m.stockAfter)}</td>
-                <td className="hide-md"><small>{[m.note, m.user].filter(Boolean).join(' · ') || '—'}</small></td>
+                <td className="hide-md"><small>{[m.expiresOn && `Vence ${m.expiresOn.split('-').reverse().join('/')}`, m.note, m.user].filter(Boolean).join(' · ') || '—'}</small></td>
               </tr>
             ))}</tbody>
           </table></div>
@@ -179,7 +180,7 @@ const TransfersTab = ({ bodega, version }) => {
 }
 
 // ---------------------------------------------------------------- Página
-const TABS = [['resumen', 'Resumen'], ['existencias', 'Existencias'], ['movimientos', 'Movimientos'], ['traslados', 'Traslados']]
+const TABS = [['resumen', 'Resumen'], ['existencias', 'Existencias'], ['vencimientos', 'Vencimientos'], ['movimientos', 'Movimientos'], ['traslados', 'Traslados']]
 
 const InventoryPage = () => {
   const { user } = useAuth()
@@ -219,10 +220,13 @@ const InventoryPage = () => {
       </div>
       {tab === 'resumen' && <SummaryTab key={version} bodega={bodega} warehouses={filterList} go={go} />}
       {tab === 'existencias' && <StockTab key={version} bodega={bodega} />}
+      {tab === 'vencimientos' && <ExpiryTab bodega={bodega} admin={admin} version={version}
+        onBaja={(r) => setModal({ baja: { type: 'baja', warehouseId: String(r.warehouse.id), productId: r.product.id, lotId: r.id, quantity: r.quantity, note: `Producto vencido (lote del ${r.expiresOn.split('-').reverse().join('/')})` } })} />}
       {tab === 'movimientos' && <MovementsTab bodega={bodega} version={version} />}
       {tab === 'traslados' && <TransfersTab bodega={bodega} version={version} />}
 
       {modal === 'move' && <MovementModal products={products} sites={sites} warehouses={warehouses} defaults={{ warehouseId: bodega || (main ? String(main.id) : '') }} onClose={() => setModal(null)} onSaved={changed} />}
+      {modal?.baja && products && <MovementModal products={products} sites={sites} warehouses={warehouses} defaults={modal.baja} onClose={() => setModal(null)} onSaved={changed} />}
       {modal === 'transfer' && <TransferModal products={products} sites={sites} warehouses={warehouses} defaults={{ fromWarehouseId: bodega || (main ? String(main.id) : '') }} onClose={() => setModal(null)} onSaved={changed} />}
       {toastNode}
     </div>

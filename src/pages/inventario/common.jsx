@@ -158,6 +158,8 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
   })
   const [items, setItems] = useState([])
   const [pick, setPick] = useState(defaults.productId ? String(defaults.productId) : '')
+  // TD-016: lotes con fecha de la bodega elegida, para sacar una baja o un ajuste de un lote puntual.
+  const [lots, setLots] = useState([])
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   // Desde el botón de un producto, la ventana trabaja solo con ese producto.
@@ -169,9 +171,16 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
   const add = (id = pick) => {
     const p = products.find((x) => x.id === Number(id))
     if (!p) return
-    setItems((list) => (list.some((x) => x.product.id === p.id) ? list : [...list, { product: p, quantity: '', unitCost: p.cost, pack: false, boxes: '', perBox: '', boxCost: '' }])); setPick('')
+    const preset = Number(id) === Number(defaults.productId) ? { quantity: defaults.quantity ?? '', lotId: defaults.lotId ? String(defaults.lotId) : '' } : {}
+    setItems((list) => (list.some((x) => x.product.id === p.id) ? list : [...list, { product: p, quantity: '', unitCost: p.cost, pack: false, boxes: '', perBox: '', boxCost: '', expiresOn: '', lotId: '', ...preset }])); setPick('')
   }
   useEffect(() => { if (defaults.productId) add(defaults.productId) }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (f.type === 'entrada' || !f.warehouseId) { setLots([]); return }
+    api.get('/inventario/lotes', { params: { bodega: f.warehouseId, sede: undefined } }).then(({ data }) => setLots(data || [])).catch(() => setLots([]))
+  }, [f.type, f.warehouseId])
+  const lotsOf = (productId) => lots.filter((l) => l.product?.id === productId)
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
   const setItem = (n, k) => (v) => setItems((list) => list.map((x, j) => (j === n ? { ...x, [k]: v?.target ? v.target.value : v } : x)))
   // Compra por caja o canasta: unidades = cajas × unidades por caja; costo unitario = costo de la caja ÷ unidades por caja.
   const boxed = f.type === 'entrada'
@@ -188,10 +197,14 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
     const bad = items.find((i) => { const q = real(i).quantity; return !(q !== 0 && Number.isFinite(q)) || (f.type !== 'ajuste' && q < 0) })
     if (bad) return setError(`Revisa la cantidad de ${bad.product.name}.`)
     if (f.type !== 'entrada' && !f.note.trim()) return setError('Escribe el motivo.')
+    const pastExp = items.find((i) => f.type === 'entrada' && i.expiresOn && i.expiresOn < today)
+    if (pastExp) return setError(`La fecha de vencimiento de ${pastExp.product.name} ya pasó. Revísala o regístralo como baja.`)
+    const bigLot = items.find((i) => f.type !== 'entrada' && i.lotId && Math.abs(real(i).quantity) > (lots.find((l) => l.id === Number(i.lotId))?.quantity ?? Infinity))
+    if (bigLot) return setError(`El lote elegido de ${bigLot.product.name} no tiene tantas unidades.`)
     if (f.type === 'entrada') { const pe = paymentError(f, purchaseTotal, { supplierId: f.supplierId }); if (pe) return setError(pe) }
     setSaving(true)
     try {
-      const { data } = await api.post('/inventario/movimientos', { ...f, payment: undefined, paySessionId: undefined, payAccount: undefined, ...(f.type === 'entrada' ? paymentBody(f) : {}), items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined })) })
+      const { data } = await api.post('/inventario/movimientos', { ...f, payment: undefined, paySessionId: undefined, payAccount: undefined, ...(f.type === 'entrada' ? paymentBody(f) : {}), items: items.map((i) => ({ productId: i.product.id, quantity: real(i).quantity, unitCost: f.type === 'entrada' ? real(i).unitCost : undefined, expiresOn: f.type === 'entrada' && i.expiresOn ? i.expiresOn : undefined, lotId: f.type !== 'entrada' && i.lotId && (f.type === 'baja' || real(i).quantity < 0) ? Number(i.lotId) : undefined })) })
       const w = warehouses.find((x) => x.id === Number(f.warehouseId))
       const paid = paymentNote(data)
       onSaved(`${MOVE_TITLES[f.type].split(' ')[0]} ${data.ref} registrada en ${w?.name}${paid}`, data.alerts)
@@ -248,6 +261,23 @@ export const MovementModal = ({ products: baseProducts, sites, warehouses, defau
                     <Field label={f.type === 'ajuste' ? `Cantidad (+ suma, − resta) en ${u}` : `Cantidad en ${u}`} htmlFor={`q${n}`}><input id={`q${n}`} type="number" step="any" inputMode="decimal" value={i.quantity} onChange={setItem(n, 'quantity')} /></Field>
                     {boxed && <Field label={`Costo por ${u}`} htmlFor={`uc${n}`}><MoneyInput id={`uc${n}`} value={i.unitCost} onChange={setItem(n, 'unitCost')} /></Field>}
                     {boxed && <div className={`mv-result${Number(i.quantity) > 0 ? ' ready' : ''}`}>{Number(i.quantity) > 0 ? <><span>Entran <b>{fmtQty(Number(i.quantity), i.product.unit)}</b></span><small>Total {formatMoney(Number(i.quantity) * Number(i.unitCost || 0))}</small></> : <small>Escribe la cantidad</small>}</div>}
+                  </div>
+                )}
+                {f.type === 'entrada' && (
+                  <div className="mv-exp">
+                    <Field label="Vence el (opcional)" htmlFor={`ex${n}`}><input id={`ex${n}`} type="date" min={today} value={i.expiresOn} onChange={setItem(n, 'expiresOn')} /></Field>
+                    <small className="hint">{i.expiresOn ? 'Queda como un lote: se vende primero lo que vence antes y te avisamos antes de que venza.' : 'Déjalo vacío si el producto no vence. Si llegaron dos fechas, regístralas como dos entradas.'}</small>
+                  </div>
+                )}
+                {f.type !== 'entrada' && lotsOf(i.product.id).length > 0 && (
+                  <div className="mv-exp">
+                    <Field label="Lote (opcional)" htmlFor={`lt${n}`}>
+                      <select id={`lt${n}`} value={i.lotId} onChange={setItem(n, 'lotId')}>
+                        <option value="">El que vence primero (automático)</option>
+                        {lotsOf(i.product.id).map((l) => <option key={l.id} value={l.id}>Vence {l.expiresOn.split('-').reverse().join('/')} · {fmtQty(l.quantity, i.product.unit)}{l.status === 'vencido' ? ' · VENCIDO' : ''}</option>)}
+                      </select>
+                    </Field>
+                    <small className="hint">Para dar de baja lo vencido, elige su lote.</small>
                   </div>
                 )}
               </div>

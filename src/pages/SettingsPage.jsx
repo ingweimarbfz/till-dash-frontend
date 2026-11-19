@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2, MdPointOfSale, MdDeliveryDining } from 'react-icons/md'
+import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2, MdPointOfSale, MdDeliveryDining, MdHourglassTop } from 'react-icons/md'
 import { MoneyInput } from '../components/forms'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
@@ -72,6 +72,12 @@ const SettingsPage = () => {
             <Field label="Horas para reabrir un turno cerrado" htmlFor="crh" hint="Si hubo un error en el cierre, el administrador puede reabrir el turno durante estas horas y antes de abrir un turno nuevo en esa caja. 0: no se reabre.">
               <div className="input-prefix" style={{ maxWidth: 160 }}><span>h</span><input id="crh" type="number" min="0" max="72" step="1" inputMode="numeric" value={form.cashReopenHours ?? 12} onChange={set('cashReopenHours')} /></div>
             </Field>
+          </Card>
+          <Card title="Vencimientos" icon={<MdHourglassTop />} subtitle="Productos con fecha de vencimiento: se vende primero lo que vence antes (FEFO).">
+            <Field label="Avisar con cuántos días de anticipación" htmlFor="ead" hint="Desde ese día el lote aparece en Inventario → Vencimientos y en el dashboard, y el mesero ve “Recomiéndalo” al tomar el pedido.">
+              <div className="input-prefix" style={{ maxWidth: 160 }}><span>d</span><input id="ead" type="number" min="1" max="365" step="1" inputMode="numeric" value={form.expiryAlertDays ?? 15} onChange={set('expiryAlertDays')} /></div>
+            </Field>
+            <label className="check"><input type="checkbox" checked={form.blockExpiredSales ?? true} onChange={set('blockExpiredSales')} /> No dejar vender lo que solo queda vencido (hay que darlo de baja)</label>
           </Card>
           <Card title="Domicilios" icon={<MdDeliveryDining />} subtitle="Valor que se le cobra al cliente por llevarle el pedido.">
             <Field label="Valor sugerido del domicilio" htmlFor="dfd" hint="Se precarga al abrir y al cobrar un domicilio; el cajero lo puede cambiar o no cobrarlo. 0: sin valor sugerido.">
