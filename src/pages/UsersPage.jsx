@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import api, { errorMessage, getSiteFilter } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { Avatar, Badge, Card, Empty, Field, Modal, PageHead, Spinner, useToast } from '../components/ui'
-import { PhotoInput, MoneyInput } from '../components/forms'
+import { PhotoInput, MoneyInput, useSites } from '../components/forms'
 import { ROLE_LABELS, POSITIONS, positionLabel } from '../utils/nav'
 import { usePlan } from '../context/PlanContext'
 import { formatDateTime, formatMoney } from '../utils/format'
@@ -190,6 +190,10 @@ const UsersPage = () => {
   const [query, setQuery] = useState('')
   const [role, setRole] = useState('')
   const [position, setPosition] = useState('')
+  // TD-027: filtrar por sucursal y ver la lista agrupada por sucursal.
+  const sites = useSites()
+  const [site, setSite] = useState(() => String(getSiteFilter() || ''))
+  const [grouped, setGrouped] = useState(true)
   const [editing, setEditing] = useState(null)
   const [toast, toastNode] = useToast()
   const [params, setParams] = useSearchParams()
@@ -201,13 +205,22 @@ const UsersPage = () => {
   }, [params, users, setParams])
 
   const load = useCallback(() => {
-    api.get('/usuarios').then(({ data }) => setUsers(data)).catch((e) => { setUsers([]); toast(errorMessage(e), 'bad') })
+    api.get('/usuarios', { params: { sede: undefined } }).then(({ data }) => setUsers(data)).catch((e) => { setUsers([]); toast(errorMessage(e), 'bad') })
   }, [toast])
   useEffect(() => { load() }, [load])
 
   const shown = useMemo(() => (users || []).filter((u) => (!role || (u.profiles || [u.role]).includes(role)) &&
     (!position || (u.positions || []).includes(position)) &&
-    (!query || `${u.fullName} ${u.username} ${u.identification}`.toLowerCase().includes(query.toLowerCase()))), [users, query, role, position])
+    (!site || (site === 'todas' ? !u.siteId : u.siteId === Number(site))) &&
+    (!query || `${u.fullName} ${u.username} ${u.identification}`.toLowerCase().includes(query.toLowerCase()))), [users, query, role, position, site])
+  // Grupos en el orden de las sucursales; al final quienes no tienen una fija (trabajan en todas).
+  const groups = useMemo(() => {
+    if (!grouped) return [{ key: 'all', title: null, rows: shown }]
+    const list = sites.map((s) => ({ key: s.id, title: s.name, rows: shown.filter((u) => u.siteId === s.id) }))
+    const known = new Set(sites.map((s) => s.id))
+    const other = shown.filter((u) => !u.siteId || !known.has(u.siteId))
+    return [...list, { key: 'none', title: 'Todas las sucursales (sin una fija)', rows: other }].filter((g) => g.rows.length)
+  }, [shown, sites, grouped])
 
   const onSaved = (u, wasEditing) => {
     setUsers((list) => (wasEditing ? list.map((x) => (x.id === u.id ? u : x)) : [...list, u]))
@@ -232,6 +245,14 @@ const UsersPage = () => {
             <option value="">Todos los cargos</option>
             {POSITIONS.map((p) => <option key={p} value={p}>{positionLabel(p, distributor)}</option>)}
           </select>
+          {sites.length > 1 && <>
+            <select value={site} onChange={(e) => setSite(e.target.value)} aria-label="Filtrar por sucursal">
+              <option value="">Todas las sucursales</option>
+              {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="todas">Sin sucursal fija</option>
+            </select>
+            <label className="check nowrap"><input type="checkbox" checked={grouped} onChange={(e) => setGrouped(e.target.checked)} /> Agrupar por sucursal</label>
+          </>}
         </div>
         {!users ? <div className="splash" style={{ minHeight: 200 }}><Spinner /></div>
           : !shown.length ? <Empty icon={<MdManageAccounts />}>No hay usuarios con ese filtro.</Empty>
@@ -239,8 +260,10 @@ const UsersPage = () => {
               <div className="table-wrap">
                 <table className="table">
                   <thead><tr><th>Usuario</th><th>Perfil y cargos</th><th className="hide-sm">Contacto</th><th className="hide-md">Último ingreso</th><th>Estado</th><th /></tr></thead>
-                  <tbody>
-                    {shown.map((u) => (
+                  {groups.map((g) => (
+                  <tbody key={g.key}>
+                    {g.title && sites.length > 1 && <tr className="group-row"><th colSpan={6}>{g.title} <small className="muted">· {g.rows.length} usuario{g.rows.length === 1 ? '' : 's'}</small></th></tr>}
+                    {g.rows.map((u) => (
                       <tr key={u.id}>
                         <td><div className="person"><Avatar user={u} size="sm" /><div><strong>{u.fullName}</strong><small>{u.username} · {u.identification}</small></div></div></td>
                         <td>
@@ -260,6 +283,7 @@ const UsersPage = () => {
                       </tr>
                     ))}
                   </tbody>
+                  ))}
                 </table>
               </div>
               )}
