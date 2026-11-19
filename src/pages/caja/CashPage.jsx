@@ -5,6 +5,7 @@ import {
 } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { ShiftExpenseModal, FundsRequestModal, ShiftExpensesCard, RequestsTab } from './shiftExpenses'
+import { SessionTransfers, SessionTransfersCard, TransfersTab, transferSummaryText, useSessionTransfers } from './transfers'
 import { useAuth } from '../../context/AuthContext'
 import { Badge, Card, Empty, Field, Kpi, Modal, PageHead, Spinner, useToast } from '../../components/ui'
 import { MoneyInput, Tabs } from '../../components/forms'
@@ -76,8 +77,21 @@ const MoveModal = ({ session, admin, onClose, onDone }) => {
 }
 
 // ---------- Cierre con arqueo ----------
-const CloseModal = ({ session, summary, onClose, onDone }) => {
+const TRANSFER_METHODS = ['transferencia', 'nequi', 'daviplata']
+// Junto a cada medio: cuántas transferencias ya se verificaron.
+const TransferDot = ({ rows }) => {
+  if (!rows.length) return null
+  const ok = rows.filter((t) => t.status === 'verificada').length
+  const bad = rows.some((t) => t.status === 'no_llego')
+  return <small className={bad ? 'text-bad' : ok === rows.length ? 'text-ok' : 'text-warn'}> · {ok} de {rows.length} verificada{rows.length === 1 ? '' : 's'}</small>
+}
+const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
   const [counted, setCounted] = useState('')
+  // Transferencias (TD-017): se confirma en la cuenta o el celular que llegaron. Las que no se revisen quedan por verificar.
+  const transfers = useSessionTransfers(session.id)
+  const [toastTr, toastTrNode] = useToast()
+  const [pendingOk, setPendingOk] = useState(false)
+  const trPending = transfers.totals?.pendiente || { count: 0, amount: 0 }
   const [nextFloat, setNextFloat] = useState(session.openingAmount || '')
   const [note, setNote] = useState('')
   const [staff, setStaff] = useState(null)
@@ -142,6 +156,10 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
     e.preventDefault(); setError('')
     if (cnt === null) return setError('Cuenta el efectivo y escribe el total.')
     if (toVault < 0) return setError('El efectivo contado no alcanza para las propinas, los domiciliarios y la base. Ajusta los valores.')
+    if (trPending.count && !pendingOk) {
+      setPendingOk(true)
+      return setError(`Quedan ${trPending.count} transferencia${trPending.count === 1 ? '' : 's'} por verificar (${formatMoney(trPending.amount)}). Si cierras así, quedan pendientes en Caja → Transferencias para revisarlas después.`)
+    }
     setSaving(true)
     try {
       const { data } = await api.post(`/caja/turnos/${session.id}/cerrar`, { countedCash: cnt, nextFloat: Number(nextFloat) || 0, tips: Object.entries(tips).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), couriers: Object.entries(courPay).filter(([, v]) => Number(v) > 0).map(([userId, amount]) => ({ userId: Number(userId), amount: Number(amount) })), note, force })
@@ -153,7 +171,7 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
   }
   return (
     <Modal size="xl" title={`Cerrar turno ${session.number} · ${session.register}`} onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="close-cash" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLock />} {force ? 'Cerrar igualmente' : 'Cerrar turno'}</button></>}>
+      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="submit" form="close-cash" className="btn btn-primary" disabled={saving}>{saving ? <Spinner /> : <MdLock />} {force ? 'Cerrar igualmente' : pendingOk && trPending.count ? 'Cerrar con transferencias pendientes' : 'Cerrar turno'}</button></>}>
       <form id="close-cash" className="close-grid" onSubmit={submit} noValidate>
         <section className="close-step">
           <h4><span>1</span> Arqueo</h4>
@@ -162,7 +180,7 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
             {!summary.byMethod.length ? <small className="muted">No hubo cobros en este turno.</small> : (
               <dl className="order-totals" style={{ margin: 0 }}>
                 {[...summary.byMethod].sort((a, b) => (a.method === 'efectivo' ? -1 : b.method === 'efectivo' ? 1 : b.amount - a.amount)).map((x) => (
-                  <div key={x.method}><dt>{x.label || x.method}{x.method !== 'efectivo' && <small className="muted"> · no entra a la caja</small>}</dt><dd>{formatMoney(x.amount)}</dd></div>
+                  <div key={x.method}><dt>{x.label || x.method}{x.method !== 'efectivo' && <small className="muted"> · no entra a la caja</small>}{TRANSFER_METHODS.includes(x.method) && transfers.rows && <TransferDot rows={transfers.rows.filter((t) => t.method === x.method)} />}</dt><dd>{formatMoney(x.amount)}</dd></div>
                 ))}
                 <div className="total"><dt>Total cobrado</dt><dd>{formatMoney(summary.byMethod.reduce((a, x) => a + x.amount, 0))}</dd></div>
               </dl>
@@ -235,8 +253,15 @@ const CloseModal = ({ session, summary, onClose, onDone }) => {
           </div>
           <Field label="Observaciones del cierre" htmlFor="cn"><textarea id="cn" rows={3} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. faltante por un billete falso, se pagó el hielo con caja" /></Field>
         </section>
-        {error && <div className="alert bad close-full">{error}</div>}
+        {transfers.rows?.length > 0 && (
+          <section className="close-step close-full">
+            <h4><span>✓</span> Transferencias <small className="muted">· no entran a la caja: revisa la cuenta o el celular y marca si llegaron{transfers.totals ? ` · ${transferSummaryText(transfers.totals)}` : ''}</small></h4>
+            <SessionTransfers data={transfers} canEdit admin={admin} toast={toastTr} />
+          </section>
+        )}
+        {error && <div className={`alert ${pendingOk && trPending.count && /por verificar/.test(error) ? 'warn' : 'bad'} close-full`}>{error}</div>}
       </form>
+      {toastTrNode}
     </Modal>
   )
 }
@@ -408,11 +433,12 @@ const SessionView = ({ id, canClose, onChanged }) => {
           </table></div>
         </Card>
       )}
+      <SessionTransfersCard key={`tr-${s.status}-${ver}`} sessionId={s.id} open={open} canEdit admin={admin} />
       <ShiftExpensesCard session={s} version={ver} open={open && canClose} onExpense={(info) => setModal({ expense: info })} onRequest={(initial) => setModal({ request: initial || {} })} />
       {modal?.expense && <ShiftExpenseModal session={s} info={modal.expense} admin={admin} onClose={() => setModal(null)} onAskFunds={(initial) => setModal({ request: initial })} onDone={(d) => { setModal(null); toast(`Gasto ${d.number} registrado`); setVer((v) => v + 1); load() }} />}
       {modal?.request && <FundsRequestModal session={s} initial={modal.request} onClose={() => setModal(null)} onDone={(d) => { setModal(null); toast(`Solicitud ${d.number} enviada al administrador`); setVer((v) => v + 1) }} />}
       {modal === 'move' && <MoveModal session={s} admin={admin} onClose={() => setModal(null)} onDone={(t) => { setModal(null); toast(t === 'ingreso' ? 'Ingreso registrado' : 'Egreso registrado'); load() }} />}
-      {modal === 'close' && <CloseModal session={s} summary={m} onClose={() => setModal(null)} onDone={(d) => { setModal(null); setS(d); load(); toast(`Turno ${d.number} cerrado`); onChanged() }} />}
+      {modal === 'close' && <CloseModal session={s} summary={m} admin={admin} onClose={() => { setModal(null); setVer((v) => v + 1) }} onDone={(d) => { setModal(null); setS(d); load(); setVer((v) => v + 1); toast(`Turno ${d.number} cerrado`); onChanged() }} />}
       {modal === 'reopen' && <ReopenModal session={s} admin={admin} onClose={() => setModal(null)} onDone={(d) => { setModal(null); toast(d.reopened ? `Turno ${s.number} reabierto. Corrige y ciérralo de nuevo.` : 'Solicitud enviada al administrador'); load(); onChanged() }} />}
       {toastNode}
     </div>
@@ -500,7 +526,9 @@ const CashPage = () => {
   const { user } = useAuth()
   const admin = ADMIN.includes(user.role)
   const [params] = useSearchParams()
-  const [tab, setTab] = useState(['boveda', 'solicitudes', 'reaperturas'].includes(params.get('tab')) && admin ? params.get('tab') : 'turno')
+  const [tab, setTab] = useState(params.get('tab') === 'transferencias' ? 'transferencias' : ['boveda', 'solicitudes', 'reaperturas'].includes(params.get('tab')) && admin ? params.get('tab') : 'turno')
+  const [trPending, setTrPending] = useState(0)
+  useEffect(() => { api.get('/caja/transferencias').then(({ data }) => setTrPending(data.totals.pendiente.count)).catch(() => {}) }, [])
   const [pending, setPending] = useState(0)
   const [reopenPending, setReopenPending] = useState(0)
   useEffect(() => {
@@ -529,7 +557,7 @@ const CashPage = () => {
         <Link to="/cuentas-por-cobrar" className="btn"><MdReceiptLong /> Cuentas por cobrar</Link>
         {admin && <button type="button" className="btn" onClick={() => setModal('register')}><MdAdd /> Caja</button>}
       </PageHead>
-      <Tabs value={tab} onChange={(t) => { setTab(t); if (t === 'turno') setCurrent(null) || load() }} tabs={[['turno', 'Turnos'], ['historial', 'Historial'], ...(admin ? [['solicitudes', pending ? `Solicitudes (${pending})` : 'Solicitudes'], ['reaperturas', reopenPending ? `Reabrir turnos (${reopenPending})` : 'Reabrir turnos'], ['boveda', 'Bóveda']] : [])]} />
+      <Tabs value={tab} onChange={(t) => { setTab(t); if (t === 'turno') setCurrent(null) || load() }} tabs={[['turno', 'Turnos'], ['historial', 'Historial'], ['transferencias', trPending ? `Transferencias (${trPending})` : 'Transferencias'], ...(admin ? [['solicitudes', pending ? `Solicitudes (${pending})` : 'Solicitudes'], ['reaperturas', reopenPending ? `Reabrir turnos (${reopenPending})` : 'Reabrir turnos'], ['boveda', 'Bóveda']] : [])]} />
       {tab === 'turno' && (!registers ? <div className="splash" style={{ minHeight: 160 }}><Spinner /></div> : <>
         <div className="register-grid">{registers.filter((r) => r.active).map((r) => (
           <div key={r.id} className={`register${r.session ? ' open' : ''}${current && r.session?.id === current.id ? ' on' : ''}`}>
@@ -551,6 +579,7 @@ const CashPage = () => {
         )}
       </>)}
       {tab === 'historial' && (current && current.fromHistory ? <><button type="button" className="btn btn-ghost btn-sm" onClick={() => setCurrent(null)}>← Volver al historial</button><SessionView key={current.id} id={current.id} canClose={false} onChanged={load} /></> : <HistoryTab onPick={(s) => setCurrent({ ...s, fromHistory: true })} />)}
+      {tab === 'transferencias' && <TransfersTab admin={admin} onCount={setTrPending} />}
       {tab === 'boveda' && admin && <VaultTab />}
       {tab === 'solicitudes' && admin && <RequestsTab onCount={setPending} />}
       {tab === 'reaperturas' && admin && <ReopenTab onCount={setReopenPending} onOpenSession={load} />}
