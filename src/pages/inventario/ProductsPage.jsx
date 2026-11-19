@@ -18,7 +18,7 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
   const editing = Boolean(initial?.id)
   const [form, setForm] = useState({
     sku: '', name: '', categoryId: '', description: '', unit: 'und', cost: '', price: '', trackStock: true, minStock: 0,
-    initialStock: 0, warehouseId: main?.id || '', payment: '', paySessionId: '', payAccount: '', photoUrl: null, gallery: [], showInMenu: true, active: true, ...(initial || {})
+    initialStock: 0, warehouseId: main?.id || '', payment: '', paySessionId: '', payAccount: '', photoUrl: null, gallery: [], showInMenu: true, courtesyAllowed: false, active: true, ...(initial || {})
   })
   const [loadingGallery, setLoadingGallery] = useState(editing)
   const sources = usePurchaseSources()
@@ -69,6 +69,7 @@ const ProductForm = ({ initial, categories, sites, warehouses, main, onClose, on
         {withStock && <div className="span-2"><PurchasePaymentField id="ppay" value={form} onChange={(v) => setForm((x) => ({ ...x, ...v }))} total={initialTotal} sources={sources} supplierId={form.supplierId} /></div>}
         <div className="span-2"><Field label="Descripción" htmlFor="pd" hint="Ingredientes o detalle que verá el cliente en la carta"><textarea id="pd" rows={2} value={form.description || ''} onChange={set('description')} /></Field></div>
         <label className="check"><input type="checkbox" checked={form.showInMenu} onChange={set('showInMenu')} /> Mostrar en la carta</label>
+        <label className="check" title="Ej. el agua que se regala con una botella de licor"><input type="checkbox" checked={Boolean(form.courtesyAllowed)} onChange={set('courtesyAllowed')} /> Se puede dar como cortesía al agregarlo al pedido</label>
         {editing && <label className="check"><input type="checkbox" checked={form.active} onChange={set('active')} /> Producto activo</label>}
         {error && <div className="alert bad span-2">{error}</div>}
       </form>
