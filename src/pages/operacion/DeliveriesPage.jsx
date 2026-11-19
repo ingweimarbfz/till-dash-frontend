@@ -48,7 +48,7 @@ const useDeliveryAction = (load) => {
   const onAction = async (d, body) => {
     setBusy(true)
     try {
-      if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast(body.courierId ? 'Domiciliario asignado' : 'Domiciliario quitado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
+      if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast('Domiciliario asignado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
       load()
     } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
   }
@@ -82,8 +82,8 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
       </div>
       <div className="row wrap" style={{ gap: 8 }}>
         {!data.mine && (
-          <select value={d.courier?.id ?? ''} onChange={(e) => onAction(d, { courierId: e.target.value ? Number(e.target.value) : null })} aria-label={`Domiciliario de ${d.number}`} disabled={busy}>
-            <option value="">Sin domiciliario</option>
+          <select value={d.courier?.id ?? ''} onChange={(e) => e.target.value && onAction(d, { courierId: Number(e.target.value) })} aria-label={`Domiciliario de ${d.number}`} disabled={busy || (Boolean(d.courier) && d.deliveryStatus !== 'por_despachar')}>
+            {!d.courier && <option value="" disabled>Elige el domiciliario</option>}
             {data.couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             {d.courier && !data.couriers.some((c) => c.id === d.courier.id) && <option value={d.courier.id}>{d.courier.name}</option>}
           </select>
@@ -304,8 +304,8 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
         <a className="delivery-address" href={mapUrl(order.customerAddress, city)} target="_blank" rel="noreferrer"><MdPlace /> <span>{order.customerAddress}</span></a>
         {order.customerPhone && <a href={`tel:${order.customerPhone}`} className="muted"><MdPhone /> {order.customerName ? `${order.customerName} · ` : ''}{order.customerPhone}</a>}
         {canAssign ? (
-          <Field label="Domiciliario" htmlFor="dbx"><select id="dbx" value={order.courier?.id ?? ''} disabled={busy} onChange={(e) => act(`/domicilios/${order.id}/asignar`, { courierId: e.target.value ? Number(e.target.value) : null }, 'Domiciliario actualizado')}>
-            <option value="">Sin domiciliario</option>
+          <Field label="Domiciliario" htmlFor="dbx"><select id="dbx" value={order.courier?.id ?? ''} disabled={busy || (Boolean(order.courier) && st !== 'por_despachar')} onChange={(e) => e.target.value && act(`/domicilios/${order.id}/asignar`, { courierId: Number(e.target.value) }, 'Domiciliario actualizado')}>
+            {!order.courier && <option value="" disabled>Elige el domiciliario</option>}
             {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             {order.courier && !couriers.some((c) => c.id === order.courier.id) && <option value={order.courier.id}>{order.courier.name}</option>}
           </select></Field>
