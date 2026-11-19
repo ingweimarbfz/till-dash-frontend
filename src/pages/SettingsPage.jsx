@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2, MdPointOfSale, MdDeliveryDining, MdHourglassTop } from 'react-icons/md'
+import { MdStorefront, MdPercent, MdPalette, MdChevronRight, MdQrCode2, MdPointOfSale, MdDeliveryDining, MdHourglassTop, MdSchedule } from 'react-icons/md'
 import { MoneyInput } from '../components/forms'
 import { Link } from 'react-router-dom'
 import api, { errorMessage } from '../api/client'
@@ -71,6 +71,13 @@ const SettingsPage = () => {
             </Field>
             <Field label="Horas para reabrir un turno cerrado" htmlFor="crh" hint="Si hubo un error en el cierre, el administrador puede reabrir el turno durante estas horas y antes de abrir un turno nuevo en esa caja. 0: no se reabre.">
               <div className="input-prefix" style={{ maxWidth: 160 }}><span>h</span><input id="crh" type="number" min="0" max="72" step="1" inputMode="numeric" value={form.cashReopenHours ?? 12} onChange={set('cashReopenHours')} /></div>
+            </Field>
+          </Card>
+          <Card title="Jornada" icon={<MdSchedule />} subtitle="Para los negocios que abren en la tarde y cierran en la madrugada del día siguiente.">
+            <Field label="La jornada empieza a las" htmlFor="dch" hint="El cuadre del día agrupa los turnos por jornada: un turno abierto antes de esta hora cuenta para el día anterior. Con 6 a. m., lo que se abre el 20 a la 1, 2 o 3 a. m. queda en el cuadre del 19.">
+              <select id="dch" value={form.dayCutoffHour ?? 6} onChange={(e) => setForm((f) => ({ ...f, dayCutoffHour: Number(e.target.value) }))} style={{ maxWidth: 220 }}>
+                {Array.from({ length: 13 }, (_, h) => <option key={h} value={h}>{h === 0 ? '12:00 a. m. (medianoche)' : h === 12 ? '12:00 p. m. (mediodía)' : `${h}:00 a. m.`}</option>)}
+              </select>
             </Field>
           </Card>
           <Card title="Vencimientos" icon={<MdHourglassTop />} subtitle="Productos con fecha de vencimiento: se vende primero lo que vence antes (FEFO).">

@@ -7,34 +7,40 @@ import { formatDate, formatDateTime, formatMoney, minutesLabel } from '../../uti
 import { bogota, shift, download } from '../../utils/range'
 
 const money = (v) => (v === null || v === undefined ? '—' : formatMoney(v))
+// Jornada: "19 nov 6:00 a. m. → 20 nov 6:00 a. m."
+const whenOf = (d) => new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' }).format(new Date(d))
 const timeOf = (d) => (d ? new Intl.DateTimeFormat('es-CO', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Bogota' }).format(new Date(d)) : '—')
 
 // Cuadre del día: lo que había en la caja general, las bases, lo vendido por forma de pago, los gastos,
 // las propinas, el arqueo de cada turno y unas verificaciones para saber si las cuentas cuadran.
+// Se agrupa por jornada (TD-019): los turnos que se abrieron desde la hora de corte (Configuración) hasta la
+// misma hora del día siguiente, así la jornada de 4 p. m. a 2 a. m. queda completa en su día.
 const CuadreTab = () => {
-  const [day, setDay] = useState(bogota())
+  // null = la jornada en curso (la calcula el servidor con la hora de corte).
+  const [day, setDay] = useState(null)
   const [d, setD] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const load = useCallback(() => {
     setLoading(true); setError('')
-    api.get('/reportes/cuadre', { params: { fecha: day } }).then(({ data }) => setD(data)).catch((e) => setError(errorMessage(e))).finally(() => setLoading(false))
+    api.get('/reportes/cuadre', { params: day ? { fecha: day } : {} }).then(({ data }) => setD(data)).catch((e) => setError(errorMessage(e))).finally(() => setLoading(false))
   }, [day])
   useEffect(() => { load() }, [load])
-  const today = bogota()
+  const today = d?.today || bogota()
+  const shown = day || d?.day || today
   const t = d?.totals
   return (
     <div className="stack cuadre">
       <div className="report-filters no-print">
         <div className="row" style={{ gap: 6, alignItems: 'center' }}>
-          <button type="button" className="btn btn-icon" aria-label="Día anterior" onClick={() => setDay((x) => shift(x, -1))}><MdChevronLeft /></button>
-          <input type="date" value={day} max={today} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="Día" />
-          <button type="button" className="btn btn-icon" aria-label="Día siguiente" disabled={day >= today} onClick={() => setDay((x) => shift(x, 1))}><MdChevronRight /></button>
-          {day !== today && <button type="button" className="btn btn-sm" onClick={() => setDay(today)}>Hoy</button>}
+          <button type="button" className="btn btn-icon" aria-label="Jornada anterior" onClick={() => setDay(shift(shown, -1))}><MdChevronLeft /></button>
+          <input type="date" value={shown} max={today} onChange={(e) => e.target.value && setDay(e.target.value)} aria-label="Jornada" />
+          <button type="button" className="btn btn-icon" aria-label="Jornada siguiente" disabled={shown >= today} onClick={() => setDay(shift(shown, 1))}><MdChevronRight /></button>
+          {shown !== today && <button type="button" className="btn btn-sm" onClick={() => setDay(null)}>Hoy</button>}
         </div>
         <div className="row" style={{ gap: 6 }}>
           <button type="button" className="btn btn-icon" onClick={load} aria-label="Actualizar" disabled={loading}>{loading ? <Spinner /> : <MdRefresh />}</button>
-          {d && <button type="button" className="btn" onClick={() => download(`cuadre-${day}`, [['Turno', 'number'], ['Caja', 'register'], ['Abrió', 'openedAt'], ['Cerró', 'closedAt'], ['Minutos', 'minutes'], ['Base', 'opening'], ['Ventas', 'sales'], ['Efectivo', 'cashSales'], ['Gastos', 'expenses'], ['Propinas', 'tips'], ['Propinas pagadas', 'tipsPaid'], ['Esperado', 'expected'], ['Contado', 'counted'], ['Diferencia', 'difference'], ['A la bóveda', 'toVault'], ['Base siguiente', 'nextFloat']], d.shifts)}><MdDownload /> CSV</button>}
+          {d && <button type="button" className="btn" onClick={() => download(`cuadre-${shown}`, [['Turno', 'number'], ['Caja', 'register'], ['Abrió', 'openedAt'], ['Cerró', 'closedAt'], ['Minutos', 'minutes'], ['Base', 'opening'], ['Ventas', 'sales'], ['Efectivo', 'cashSales'], ['Gastos', 'expenses'], ['Propinas', 'tips'], ['Propinas pagadas', 'tipsPaid'], ['Esperado', 'expected'], ['Contado', 'counted'], ['Diferencia', 'difference'], ['A la bóveda', 'toVault'], ['Base siguiente', 'nextFloat']], d.shifts)}><MdDownload /> CSV</button>}
           {d && <button type="button" className="btn" onClick={() => window.print()}><MdPrint /> Imprimir</button>}
         </div>
       </div>
@@ -44,14 +50,14 @@ const CuadreTab = () => {
             {d.balanced ? <MdCheckCircle /> : <MdWarningAmber />}
             <div>
               <strong>{d.balanced ? 'Las cuentas cuadran' : 'Hay diferencias por revisar'}</strong>
-              <small>{formatDate(d.day)}{d.site ? ` · ${d.site}` : ' · todas las sucursales'} · {t.shifts} turno{t.shifts === 1 ? '' : 's'}{t.openShifts ? ` (${t.openShifts} abierto${t.openShifts === 1 ? '' : 's'})` : ''} · generado {formatDateTime(d.generatedAt)}</small>
+              <small>{d.jornada ? `Jornada del ${formatDate(d.day)} (${whenOf(d.jornada.from)} → ${whenOf(d.jornada.to)})` : formatDate(d.day)}{d.site ? ` · ${d.site}` : ' · todas las sucursales'} · {t.shifts} turno{t.shifts === 1 ? '' : 's'}{t.openShifts ? ` (${t.openShifts} abierto${t.openShifts === 1 ? '' : 's'})` : ''} · generado {formatDateTime(d.generatedAt)}</small>
             </div>
           </div>
 
           <div className="kpis">
             <Kpi label="Vendido" value={formatMoney(d.sold.net)} note={`${d.sold.orders} pedidos · sin propinas`} tone="brand" icon={MdPointOfSale} />
             <Kpi label="Bases de apertura" value={formatMoney(t.opening)} note={`${t.shifts} turno${t.shifts === 1 ? '' : 's'}`} />
-            <Kpi label="Gastos del día" value={formatMoney(t.expenses)} note={`Caja ${formatMoney(t.expensesCash)} · fondos ${formatMoney(t.expensesFunds)}`} />
+            <Kpi label="Gastos de la jornada" value={formatMoney(t.expenses)} note={`Caja ${formatMoney(t.expensesCash)} · fondos ${formatMoney(t.expensesFunds)}`} />
             <Kpi label="Propinas" value={formatMoney(t.tips)} note={`Pagadas ${formatMoney(t.tipsPaid)}`} />
             <Kpi label="Diferencia de arqueo" value={formatMoney(t.difference)} tone={t.difference === 0 ? '' : t.difference > 0 ? 'warn' : 'bad'} note={`Contado ${formatMoney(t.counted)}`} />
           </div>
@@ -72,7 +78,7 @@ const CuadreTab = () => {
                 <div><dt>Quedó de base para el siguiente turno</dt><dd>{money(t.nextFloat)}</dd></div>
               </dl>
             </Card>
-            <Card title="Lo vendido" subtitle="Pedidos cobrados en el día">
+            <Card title="Lo vendido" subtitle="Pedidos cobrados en los turnos de la jornada">
               <dl className="order-totals" style={{ margin: 0 }}>
                 <div><dt>Valor de lo pedido</dt><dd>{money(d.sold.gross)}</dd></div>
                 {d.sold.courtesies > 0 && <div><dt>Cortesías</dt><dd>−{money(d.sold.courtesies)}</dd></div>}
@@ -93,8 +99,8 @@ const CuadreTab = () => {
             ))}</ul>
           </Card>
 
-          <Card title="Turnos de caja del día" icon={<MdPointOfSale />} flush>
-            {!d.shifts.length ? <Empty icon={<MdPointOfSale />}>No hubo turnos de caja este día.</Empty> : (
+          <Card title="Turnos de caja de la jornada" icon={<MdPointOfSale />} flush>
+            {!d.shifts.length ? <Empty icon={<MdPointOfSale />}>No se abrieron turnos de caja en esta jornada.</Empty> : (
               <div className="table-wrap"><table className="table">
                 <thead><tr><th>Turno</th><th className="hide-sm">Horario</th><th className="num">Base</th><th className="num">Cobrado</th><th className="num hide-md">Gastos</th><th className="num hide-md">Propinas</th><th className="num">Esperado</th><th className="num">Contado</th><th className="num">Diferencia</th></tr></thead>
                 <tbody>{d.shifts.map((s) => (
@@ -116,22 +122,22 @@ const CuadreTab = () => {
           </Card>
 
           <div className="grid grid-2">
-            <Card title="Caja general y fondos" subtitle="Saldo al empezar y al terminar el día" icon={<MdAccountBalance />} actions={<Link to="/finanzas?tab=fondos" className="btn btn-sm no-print">Ver fondos</Link>}>
+            <Card title="Caja general y fondos" subtitle="Saldo al empezar y al terminar la jornada" icon={<MdAccountBalance />} actions={<Link to="/finanzas?tab=fondos" className="btn btn-sm no-print">Ver fondos</Link>}>
               {!d.funds.length ? <Empty icon={<MdAccountBalance />}>Sin fondos con movimientos.</Empty> : (
                 <div className="stack" style={{ gap: 12 }}>{d.funds.map((f) => (
                   <div key={f.id} className="fund-day">
                     <div className="row-between"><strong>{f.name}</strong><small className="muted">Ahora {formatMoney(f.now)}</small></div>
                     <dl className="order-totals" style={{ margin: 0 }}>
-                      <div><dt>Al empezar el día</dt><dd>{money(f.start)}</dd></div>
+                      <div><dt>Al empezar la jornada</dt><dd>{money(f.start)}</dd></div>
                       {f.movements.map((m) => <div key={m.type}><dt>{m.label}</dt><dd className={m.amount < 0 ? 'text-bad' : ''}>{money(m.amount)}</dd></div>)}
-                      <div className="total"><dt>Al terminar el día</dt><dd>{money(f.end)}</dd></div>
+                      <div className="total"><dt>Al terminar la jornada</dt><dd>{money(f.end)}</dd></div>
                     </dl>
                   </div>
                 ))}</div>
               )}
             </Card>
-            <Card title="Gastos del día" flush>
-              {!d.expenses.length ? <Empty>Sin gastos este día.</Empty> : (
+            <Card title="Gastos de la jornada" flush>
+              {!d.expenses.length ? <Empty>Sin gastos en esta jornada.</Empty> : (
                 <ul className="list padded">{d.expenses.map((e) => (
                   <li key={e.id}><span><strong>{e.number}</strong> {e.description}<small className="block muted">{e.source === 'caja' ? 'Con la caja' : e.source === 'fondo' ? 'Con fondos' : 'Otro medio'}{e.supplier ? ` · ${e.supplier}` : ''} · {timeOf(e.createdAt)}</small></span><span className="money">{formatMoney(e.amount)}</span></li>
                 ))}</ul>
