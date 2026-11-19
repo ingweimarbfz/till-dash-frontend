@@ -358,7 +358,7 @@ const SessionView = ({ id, canClose, onChanged }) => {
         <Kpi label="Efectivo esperado" value={formatMoney(m.expectedCash)} note={`Base ${formatMoney(s.openingAmount)}`} tone="dark" />
         {!open && <Kpi label="Diferencia" value={formatMoney(s.difference)} tone={s.difference === 0 ? '' : s.difference > 0 ? 'warn' : 'bad'} note={`Contado ${formatMoney(s.countedCash)}`} />}
         {m.discounts > 0 && <Kpi label="Descuentos" value={formatMoney(m.discounts)} />}
-        {m.courtesies > 0 && <Kpi label="Cortesías" value={formatMoney(m.courtesies)} />}
+        {m.courtesies > 0 && <Kpi label="Cortesías" value={formatMoney(m.courtesies)} note={m.courtesyCost > 0 ? `Costo ${formatMoney(m.courtesyCost)}` : 'a precio de venta'} />}
       </div>
       <div className="grid grid-2-1">
         <Card title="Movimientos" subtitle={`${s.register} · ${s.number} · abrió ${s.openedBy} ${since(s.openedAt)}`} flush
@@ -395,6 +395,19 @@ const SessionView = ({ id, canClose, onChanged }) => {
           {!open && s.closeNote && <p className="hint">📝 {s.closeNote}</p>}
         </Card>
       </div>
+      {m.courtesyItems?.length > 0 && (
+        <Card title="Cortesías del turno" subtitle="No se cobraron, pero salieron del inventario: es el valor que asume el establecimiento" flush>
+          <div className="table-wrap"><table className="table">
+            <thead><tr><th>Pedido</th><th>Producto</th><th className="num">Precio de venta</th><th className="num">Costo</th></tr></thead>
+            <tbody>{m.courtesyItems.map((x) => (
+              <tr key={x.id}><td><Link to={`/pedidos/${x.orderId}`}>{x.order}</Link></td>
+                <td>{x.quantity} × {x.name}{x.reason && <small className="block muted">🎁 {x.reason}</small>}</td>
+                <td className="num money">{formatMoney(x.value)}</td><td className="num money">{formatMoney(x.cost)}</td></tr>
+            ))}</tbody>
+            <tfoot><tr><th colSpan={2}>Total asumido</th><th className="num money">{formatMoney(m.courtesies)}</th><th className="num money">{formatMoney(m.courtesyCost)}</th></tr></tfoot>
+          </table></div>
+        </Card>
+      )}
       <ShiftExpensesCard session={s} version={ver} open={open && canClose} onExpense={(info) => setModal({ expense: info })} onRequest={(initial) => setModal({ request: initial || {} })} />
       {modal?.expense && <ShiftExpenseModal session={s} info={modal.expense} admin={admin} onClose={() => setModal(null)} onAskFunds={(initial) => setModal({ request: initial })} onDone={(d) => { setModal(null); toast(`Gasto ${d.number} registrado`); setVer((v) => v + 1); load() }} />}
       {modal?.request && <FundsRequestModal session={s} initial={modal.request} onClose={() => setModal(null)} onDone={(d) => { setModal(null); toast(`Solicitud ${d.number} enviada al administrador`); setVer((v) => v + 1) }} />}
