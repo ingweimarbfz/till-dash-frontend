@@ -8,6 +8,7 @@ import { usePlan } from '../context/PlanContext'
 import { formatDate } from '../utils/format'
 import { navFor, titleFor, ACCOUNT_NAV, ROLE_LABELS } from '../utils/nav'
 import { Avatar } from '../components/ui'
+import { useSites } from '../components/forms'
 import { BrandLogo } from '../components/Logo'
 import SearchPalette, { useSearchShortcut } from '../components/SearchPalette'
 import StockAlerts from '../components/StockAlerts'
@@ -99,6 +100,11 @@ const AppLayout = () => {
     window.addEventListener('td:set-site', onSet)
     return () => window.removeEventListener('td:set-site', onSet)
   }, [changeSite])
+  // TD-034: la sede, debajo del nombre del establecimiento.
+  const allSites = useSites()
+  const siteLabel = admin
+    ? (site ? allSites.find((x) => x.id === site)?.name : allSites.length > 1 ? 'Todas las sedes' : allSites[0]?.name) || null
+    : user.site?.name || null
   const siteControl = admin
     ? <SiteSelector value={site} onChange={changeSite} />
     : user.site && user.role === 'empleado' && <span className="site-chip" title="Tu sucursal"><MdPlace /> {user.site.name}</span>
@@ -120,6 +126,7 @@ const AppLayout = () => {
         <div className="sidebar-org">
           <small>Establecimiento</small>
           <strong>{settings.businessName}</strong>
+          {siteLabel && <span className="sidebar-org-site" title="Sede"><MdPlace /> {siteLabel}</span>}
         </div>
         {/* Mi plan a la vista, debajo del establecimiento (solo el super administrador). */}
         {user.role === 'superadmin' && (

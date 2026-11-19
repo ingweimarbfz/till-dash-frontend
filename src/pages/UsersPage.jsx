@@ -48,6 +48,9 @@ const UserForm = ({ initial, onClose, onSaved, onDeleted }) => {
   const isCourier = isEmployee && form.positions.includes('domiciliario')
   // TD-026: el domiciliario externo solo cobra por domicilios: sin jornada, turno ni nómina.
   const external = isCourier && Boolean(form.courierExternal)
+  // TD-034: el que solo es domiciliario, en la sede principal, queda disponible para todas las sedes.
+  const onlyCourier = isEmployee && form.positions.length === 1 && form.positions[0] === 'domiciliario'
+  const mainSite = sites.find((s) => s.isMain)
   // Forma de pago y permiso de pagos (TD-021): solo superadmin o admin con el permiso.
   const canPay = Boolean(me.canManagePay)
   const kinds = KINDS.filter(([k]) => k !== 'superadmin' || me.role === 'superadmin')
@@ -96,7 +99,13 @@ const UserForm = ({ initial, onClose, onSaved, onDeleted }) => {
           </select>
         </Field>
         <Field label="Sucursal" htmlFor="siteId" hint="Donde trabaja. Los administradores ven todas">
-          <select id="siteId" value={form.siteId} onChange={set('siteId')}><option value="">Sin sucursal</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` · ${s.city}` : ''}</option>)}</select>
+          <select id="siteId" value={form.siteId} onChange={set('siteId')}><option value="">Sin sucursal</option>{sites.map((s) => <option key={s.id} value={s.id}>{s.name}{s.city ? ` · ${s.city}` : ''}{onlyCourier && s.isMain ? ' (recomendada)' : ''}</option>)}</select>
+          {onlyCourier && mainSite && sites.length > 1 && (
+            <div className="alert info" style={{ marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span>Recomendado: <b>{mainSite.name}</b>. Así este domiciliario queda disponible en todas las sedes. Úsalo si las sedes están en la misma ciudad; si están en ciudades distintas, elige la sede donde trabaja.</span>
+              {String(form.siteId) !== String(mainSite.id) && <button type="button" className="btn btn-sm" onClick={() => setForm((f) => ({ ...f, siteId: mainSite.id }))}>Usar {mainSite.name}</button>}
+            </div>
+          )}
         </Field>
         {form.kind !== 'cliente' && (
           <div className="span-2 profile-checks">
