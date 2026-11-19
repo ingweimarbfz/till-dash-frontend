@@ -11,7 +11,7 @@
 export const AGENT_URL = 'http://127.0.0.1:17321'
 const KEY = 'tilldash.impresora'
 
-export const PRINTER_DEFAULTS = { mode: 'navegador', printer: '', ip: '', port: 9100, width: 80, copies: 1, autoPrint: false, openDrawer: false, cut: true }
+export const PRINTER_DEFAULTS = { mode: 'navegador', printer: '', ip: '', port: 9100, width: 80, copies: 1, autoPrint: false, openDrawer: false, cut: true, askBeforeCharge: true }
 
 export const getPrinterConfig = () => {
   try { return { ...PRINTER_DEFAULTS, ...JSON.parse(localStorage.getItem(KEY) || '{}') } } catch { return { ...PRINTER_DEFAULTS } }

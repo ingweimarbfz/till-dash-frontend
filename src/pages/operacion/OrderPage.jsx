@@ -10,6 +10,7 @@ import { formatDateTime, formatMoney } from '../../utils/format'
 import { AREA_LABEL, ITEM_STATUS, ITEM_TONE, ORDER_STATUS, ORDER_TONE, PAY_METHODS, Qty, since, useCan } from './common'
 import ChargeModal from './ChargeModal'
 import { orderTicket } from '../../utils/ticket'
+import { getPrinterConfig } from '../../utils/printer'
 import { DeliveryBox } from './DeliveriesPage'
 import { AliasModal, MoveModal } from './tableModals'
 
@@ -36,14 +37,17 @@ const ReasonModal = ({ title, label, placeholder, confirm, danger, onClose, onCo
 }
 
 // Precuenta: antes de imprimir se le pregunta al cliente si quiere incluir la propina.
-const TipAskModal = ({ o, settings, initial, onClose, onDone }) => {
+// beforeCharge (TD-018): se abrió desde Cobrar; además de imprimir se puede imprimir y seguir al cobro.
+const TipAskModal = ({ o, settings, initial, onClose, onDone, beforeCharge = false }) => {
   const pct = Number(settings.tipPercent ?? 10)
   const tipValue = Math.round((o.subtotal - o.discountTotal) * pct / 100)
   const [want, setWant] = useState(Boolean(initial))
-  const print = () => { orderTicket({ o, settings, tip: want ? tipValue : 0, tipPct: pct }); onDone(want) }
+  const print = (charge = false) => { orderTicket({ o, settings, tip: want ? tipValue : 0, tipPct: pct }); onDone(want, charge) }
   return (
     <Modal title={`Precuenta ${o.number}`} onClose={onClose}
-      footer={<><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="button" className="btn btn-primary" onClick={print} autoFocus><MdPrint /> Imprimir precuenta</button></>}>
+      footer={beforeCharge
+        ? <><button type="button" className="btn" onClick={() => print(false)}><MdPrint /> Imprimir y cobrar después</button><button type="button" className="btn btn-primary" onClick={() => print(true)} autoFocus><MdPointOfSale /> Imprimir y cobrar</button></>
+        : <><button type="button" className="btn" onClick={onClose}>Cancelar</button><button type="button" className="btn btn-primary" onClick={() => print(false)} autoFocus><MdPrint /> Imprimir precuenta</button></>}>
       <div className="stack" style={{ gap: 12 }}>
         <p className="muted" style={{ margin: 0 }}>Pregúntale al cliente si desea incluir la propina. Si no la quiere, no aparece en la precuenta ni se suma a la cuenta.</p>
         <label className={`check-card${want ? ' on' : ''}`}>
@@ -74,7 +78,12 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
   const [sending, setSending] = useState(false)
   const [modal, setModal] = useState(null)
   // Lo que respondió el cliente sobre la propina en la precuenta (se lleva al cobro).
-  const [tipWanted, setTipWanted] = useState(null)
+  // Se guarda por pedido en esta pestaña: si ya se imprimió la precuenta, Cobrar ya no vuelve a preguntar (TD-018).
+  const billKey = `td_precuenta_${id}`
+  const [tipWanted, setTipWantedState] = useState(() => { try { const v = sessionStorage.getItem(billKey); return v === null ? null : v === '1' } catch { return null } })
+  const setTipWanted = (w) => { setTipWantedState(w); try { sessionStorage.setItem(billKey, w ? '1' : '0') } catch { /* sin almacenamiento */ } }
+  // Cobrar: si la precuenta no se ha impreso, primero se pregunta si se imprime para llevársela al cliente.
+  const startCharge = () => setModal(tipWanted === null && getPrinterConfig().askBeforeCharge !== false ? 'ask-bill' : 'charge')
   const [toast, toastNode] = useToast()
   const seller = can('mesero', 'cajero', 'host', 'bartender', 'barista')
   const cashier = can('cajero')
@@ -143,7 +152,7 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
           {o.type === 'mesa' && seller && !o.alias && <button type="button" className="btn btn-sm" onClick={() => setModal('alias')}><MdLabel /> Alias</button>}
           <button type="button" className="btn btn-sm" onClick={() => act(() => api.post(`/pedidos/${o.id}/cuenta`, { cancel: Boolean(o.billRequestedAt) }), o.billRequestedAt ? 'Se quitó la solicitud de cuenta' : 'Cuenta pedida: la caja ya la ve')}><MdReceipt /> {o.billRequestedAt ? 'Quitar cuenta' : 'Pedir cuenta'}</button>
           {cashier && <button type="button" className="btn btn-sm btn-danger-ghost" onClick={() => setModal('void')}><MdBlock /> Anular</button>}
-          {cashier && <button type="button" className="btn btn-primary" onClick={() => setModal('charge')} disabled={!live.length || cart.length > 0} title={cart.length ? 'Envía o borra los productos sin enviar' : ''}><MdPointOfSale /> Cobrar {formatMoney(o.total)}</button>}
+          {cashier && <button type="button" className="btn btn-primary" onClick={startCharge} disabled={!live.length || cart.length > 0} title={cart.length ? 'Envía o borra los productos sin enviar' : ''}><MdPointOfSale /> Cobrar {formatMoney(o.total)}</button>}
         </div>}
       </div>
 
@@ -247,6 +256,16 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
         </div>
       </div>
 
+      {modal === 'ask-bill' && (
+        <Modal title={`Cobrar ${o.table || o.typeLabel || ''} · ${o.number}`} onClose={() => setModal(null)}
+          footer={<><button type="button" className="btn" onClick={() => setModal('charge')}><MdPointOfSale /> Cobrar sin imprimir</button><button type="button" className="btn btn-primary" onClick={() => setModal('bill-charge')} autoFocus><MdPrint /> Imprimir la cuenta</button></>}>
+          <div className="stack" style={{ gap: 10 }}>
+            <p style={{ margin: 0 }}><b>¿Deseas imprimir primero la cuenta?</b></p>
+            <p className="muted" style={{ margin: 0 }}>Para llevársela al cliente y que la revise antes de pagar. Total {formatMoney(o.total)}.</p>
+          </div>
+        </Modal>
+      )}
+      {modal === 'bill-charge' && <TipAskModal o={o} settings={settings} initial={tipWanted} beforeCharge onClose={() => setModal(null)} onDone={(w, charge) => { setTipWanted(w); setModal(charge ? 'charge' : null); if (!charge) toast('Cuenta impresa. Cuando el cliente pague, presiona Cobrar.') }} />}
       {modal === 'bill' && <TipAskModal o={o} settings={settings} initial={tipWanted} onClose={() => setModal(null)} onDone={(w) => { setTipWanted(w); setModal(null) }} />}
       {modal === 'charge' && <ChargeModal order={o} tipWanted={tipWanted} onClose={() => setModal(null)} onCharged={() => { setModal(null); if (embedded) { onChanged?.(); onClose?.() } else navigate(o.type === 'mesa' ? '/mesas' : '/pedidos') }} />}
       {modal === 'move' && <MoveModal order={o} fromName={o.table} onClose={() => setModal(null)} onMoved={(data, t) => { setO((p) => ({ ...p, ...data })); setModal(null); toast(`Pedido trasladado a ${t.name}`) }} />}
