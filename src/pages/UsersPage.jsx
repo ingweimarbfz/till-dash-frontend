@@ -10,7 +10,7 @@ import { usePlan } from '../context/PlanContext'
 import { formatDateTime, formatMoney } from '../utils/format'
 import { formErrors } from '../utils/validate'
 
-const EMPTY = { identification: '', name: '', lastName: '', username: '', email: '', phone: '', kind: 'empleado', alsoAdmin: false, alsoEmployee: false, positions: [], password: '', resetPassword: false, active: true, siteId: '', avatarUrl: null, payMode: 'ninguno', hourRate: '', overtimeRate: '', salary: '', payPeriod: 'quincenal', canManagePay: false }
+const EMPTY = { identification: '', name: '', lastName: '', username: '', email: '', phone: '', kind: 'empleado', alsoAdmin: false, alsoEmployee: false, positions: [], password: '', resetPassword: false, active: true, siteId: '', avatarUrl: null, payMode: 'ninguno', hourRate: '', overtimeRate: '', salary: '', payPeriod: 'quincenal', canManagePay: false, courierPay: 'domicilios' }
 const ROLE_TONE = { superadmin: 'dark', admin: 'brand', empleado: 'warn', cliente: '' }
 
 // Tipo de usuario del formulario → perfiles. Un admin puede ser también empleado (p. ej. cajero) y
@@ -34,7 +34,7 @@ const UserForm = ({ initial, onClose, onSaved }) => {
   const { user: me } = useAuth()
   const editing = Boolean(initial?.id)
   const [form, setForm] = useState(editing
-    ? { ...EMPTY, ...initial, ...fromUser(initial), siteId: initial.siteId ?? '', password: '', email: initial.email || '', phone: initial.phone || '', positions: initial.positions || [], payMode: initial.payMode || 'ninguno', hourRate: initial.hourRate || '', overtimeRate: initial.overtimeRate || '', salary: initial.salary || '', payPeriod: initial.payPeriod || 'quincenal', canManagePay: initial.role === 'admin' && Boolean(initial.canManagePay) }
+    ? { ...EMPTY, ...initial, ...fromUser(initial), siteId: initial.siteId ?? '', password: '', email: initial.email || '', phone: initial.phone || '', positions: initial.positions || [], payMode: initial.payMode || 'ninguno', hourRate: initial.hourRate || '', overtimeRate: initial.overtimeRate || '', salary: initial.salary || '', payPeriod: initial.payPeriod || 'quincenal', canManagePay: initial.role === 'admin' && Boolean(initial.canManagePay), courierPay: initial.courierPay || 'domicilios' }
     : { ...EMPTY, siteId: getSiteFilter() || '' })
   const [sites, setSites] = useState([])
   useEffect(() => { api.get('/sedes', { params: { activas: 1, sede: undefined } }).then(({ data }) => setSites(data)).catch(() => {}) }, [])
@@ -44,6 +44,7 @@ const UserForm = ({ initial, onClose, onSaved }) => {
   const togglePos = (p) => setForm((f) => ({ ...f, positions: f.positions.includes(p) ? f.positions.filter((x) => x !== p) : [...f.positions, p] }))
   const profiles = profilesOf(form)
   const isEmployee = profiles.includes('empleado')
+  const isCourier = isEmployee && form.positions.includes('domiciliario')
   // Forma de pago y permiso de pagos (TD-021): solo superadmin o admin con el permiso.
   const canPay = Boolean(me.canManagePay)
   const kinds = KINDS.filter(([k]) => k !== 'superadmin' || me.role === 'superadmin')
@@ -55,13 +56,14 @@ const UserForm = ({ initial, onClose, onSaved }) => {
     if (isEmployee && !form.positions.length) errs.push('Elige al menos un cargo (vendedor o mesero, cajero, domiciliario…).')
     if (form.password && form.password.length < 8) errs.push('La contraseña debe tener al menos 8 caracteres.')
     if (canPay && isEmployee && form.payMode === 'turno' && !(Number(form.hourRate) > 0)) errs.push('Escribe el valor de la hora para pagarle por turnos.')
+    if (canPay && isCourier && form.courierPay === 'jornada' && form.payMode === 'ninguno') errs.push('Al domiciliario por jornada elígele pago por turno o por nómina.')
     if (canPay && isEmployee && form.payMode === 'nomina' && !(Number(form.salary) > 0)) errs.push('Escribe el salario de la quincena o del mes.')
     if (errs.length) return setError(errs.join(' '))
     setSaving(true)
     try {
-      const { kind, alsoAdmin, alsoEmployee, payMode, hourRate, overtimeRate, salary, payPeriod, canManagePay, ...rest } = form
+      const { kind, alsoAdmin, alsoEmployee, payMode, hourRate, overtimeRate, salary, payPeriod, canManagePay, courierPay, ...rest } = form
       const body = { ...rest, role: profiles[0], profiles, positions: isEmployee ? form.positions : [] }
-      if (canPay) Object.assign(body, { payMode: isEmployee ? payMode : 'ninguno', hourRate: Number(hourRate) || 0, overtimeRate: Number(overtimeRate) || 0, salary: Number(salary) || 0, payPeriod })
+      if (canPay) Object.assign(body, { payMode: isEmployee ? payMode : 'ninguno', hourRate: Number(hourRate) || 0, overtimeRate: Number(overtimeRate) || 0, salary: Number(salary) || 0, payPeriod, courierPay: isCourier ? courierPay : 'domicilios' })
       if (me.role === 'superadmin') body.canManagePay = profiles[0] === 'admin' && canManagePay
       const { data } = editing ? await api.put(`/usuarios/${initial.id}`, body) : await api.post('/usuarios', body)
       onSaved(data, editing)
@@ -110,7 +112,16 @@ const UserForm = ({ initial, onClose, onSaved }) => {
         )}
         {canPay && isEmployee && (
           <div className="span-2 profile-checks pay-config">
-            <span className="profile-checks-title">¿Cómo se le paga?</span>
+            {isCourier && <>
+              <span className="profile-checks-title">Como domiciliario, ¿cómo se le paga?</span>
+              <div className="seg seg-wrap" style={{ gridColumn: '1 / -1' }}>
+                {[['domicilios', 'Por domicilios'], ['jornada', 'Por jornada, como empleado']].map(([k, l]) => (
+                  <button key={k} type="button" className={`btn btn-sm${form.courierPay === k ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, courierPay: k, payMode: k === 'jornada' && f.payMode === 'ninguno' ? 'turno' : f.payMode }))} aria-pressed={form.courierPay === k}>{l}</button>
+                ))}
+              </div>
+              <small className="hint" style={{ gridColumn: '1 / -1' }}>{form.courierPay === 'jornada' ? 'No recibe parte del valor de los domicilios: ese dinero queda para el negocio. Se le paga por turno o nómina, como abajo.' : 'Recibe su parte del valor de cada domicilio, con el porcentaje de Configuración → Domicilios. Además puede tener pago por turno o nómina.'}</small>
+            </>}
+            <span className="profile-checks-title">{isCourier ? 'Pago por turno o nómina' : '¿Cómo se le paga?'}</span>
             <div className="seg seg-wrap" style={{ gridColumn: '1 / -1' }}>
               {[['turno', 'Por turno'], ['nomina', 'Nómina'], ['ninguno', 'No se le paga aquí']].map(([k, l]) => (
                 <button key={k} type="button" className={`btn btn-sm${form.payMode === k ? ' on' : ''}`} onClick={() => setForm((f) => ({ ...f, payMode: k }))} aria-pressed={form.payMode === k}>{l}</button>
@@ -221,6 +232,7 @@ const UsersPage = () => {
                           <span className="badges">{(u.profiles || [u.role]).map((r) => <Badge key={r} tone={ROLE_TONE[r]}>{ROLE_LABELS[r]}</Badge>)}</span>
                           {!!u.positions?.length && <><br /><small>{u.positions.map((p) => positionLabel(p, distributor)).join(', ')}</small></>}
                           {u.role === 'admin' && u.canManagePay && <><br /><small className="muted">Gestiona los pagos al personal</small></>}
+                          {u.courierPay === 'jornada' && (u.positions || []).includes('domiciliario') && <><br /><small className="muted">Domiciliario por jornada</small></>}
                           {u.payMode === 'turno' && <><br /><small className="muted">Por turno · {formatMoney(u.hourRate)} la hora{u.overtimeRate ? ` · ${formatMoney(u.overtimeRate)} la extra` : ''}</small></>}
                           {u.payMode === 'nomina' && <><br /><small className="muted">Nómina {u.payPeriod === 'quincenal' ? 'quincenal' : 'mensual'} · {formatMoney(u.salary)}</small></>}
                           {u.site && <><br /><small>{u.site.name}</small></>}

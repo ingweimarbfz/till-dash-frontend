@@ -194,11 +194,11 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
               <h5>🛵 Domiciliarios <small className="muted">· {cour.rule.mode === 'todo' ? 'les toca todo el domicilio' : `les toca el ${cour.rule.percent} % del domicilio`} · sus propinas se pagan en Pagos al personal</small></h5>
               <ul className="tip-list">{cour.rows.map((r) => (
                 <li key={r.userId} className="on">
-                  <span><strong>{r.name}</strong><small className="block muted">{r.deliveries} domicilio{r.deliveries === 1 ? '' : 's'} · {formatMoney(r.share)} de {formatMoney(r.fees)} en domicilios{r.tips > 0 ? ` · ${formatMoney(r.tips)} de propina, se pagan aparte` : ''}</small></span>
-                  <div className="pay-row">
+                  <span><strong>{r.name}</strong><small className="block muted">{r.deliveries} domicilio{r.deliveries === 1 ? '' : 's'} · {r.byShift ? `se le paga por jornada: los ${formatMoney(r.fees)} de domicilios quedan para el negocio` : `${formatMoney(r.share)} de ${formatMoney(r.fees)} en domicilios`}{r.tips > 0 ? ` · ${formatMoney(r.tips)} de propina, se pagan aparte` : ''}</small></span>
+                  {!r.byShift && <div className="pay-row">
                     <MoneyInput id={`cour-${r.userId}`} value={courPay[r.userId] ?? ''} onChange={(v) => setCourPay((t) => ({ ...t, [r.userId]: v }))} aria-label={`Pago a ${r.name}`} />
                     <PayNow name={r.name} value={courNow[r.userId] !== false} onChange={(v) => setCourNow((t) => ({ ...t, [r.userId]: v }))} />
-                  </div>
+                  </div>}
                 </li>
               ))}</ul>
               <div className="row-between"><span className="muted">Se pagan ahora en efectivo{courLater ? ` · ${formatMoney(courLater)} pendientes` : ''}</span><strong className="money">{formatMoney(courTotal)}</strong></div>
