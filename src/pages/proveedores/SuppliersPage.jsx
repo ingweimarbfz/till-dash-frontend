@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { MdAdd, MdEdit, MdSearch, MdLocalShipping, MdPhone, MdWhatsapp, MdEmail, MdPlace, MdAccountBalance, MdInventory2, MdReceiptLong, MdShoppingCart, MdSave, MdDelete, MdDownload } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Kpi, Modal, PageHead, Spinner, useToast } from '../../components/ui'
-import { Tabs } from '../../components/forms'
+import { SitePicker, siteNamesOf, Tabs, useSites } from '../../components/forms'
 import { Bars } from '../../components/charts'
 import { loadSuppliers, SUPPLIER_CATEGORIES } from '../../components/SupplierField'
 import { formatDate, formatMoney } from '../../utils/format'
@@ -12,7 +12,7 @@ const DAYS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
 const EMPTY = {
   name: '', legalName: '', docType: 'NIT', docNumber: '', category: 'bebidas', contactName: '', phone: '', whatsapp: '', email: '', address: '', city: '',
-  paymentTerms: 0, bankName: '', bankAccountType: '', bankAccount: '', deliveryDays: [], notes: '', active: true
+  paymentTerms: 0, bankName: '', bankAccountType: '', bankAccount: '', deliveryDays: [], notes: '', siteIds: [], active: true
 }
 const termsLabel = (d) => (d > 0 ? `Crédito a ${d} días` : 'De contado')
 const waLink = (n) => `https://wa.me/${String(n).replace(/\D/g, '').replace(/^(?=3\d{9}$)/, '57')}`
@@ -66,6 +66,7 @@ const SupplierModal = ({ initial, onClose, onSaved }) => {
           <Field label="Tipo de cuenta" htmlFor="sbt"><select id="sbt" value={f.bankAccountType || ''} onChange={set('bankAccountType')}><option value="">—</option><option value="ahorros">Ahorros</option><option value="corriente">Corriente</option></select></Field>
           <Field label="Número de cuenta" htmlFor="sba"><input id="sba" value={f.bankAccount || ''} onChange={set('bankAccount')} /></Field>
           <div className="span-2"><Field label="Notas" htmlFor="sno"><textarea id="sno" rows={2} value={f.notes || ''} onChange={set('notes')} placeholder="Ej. pedido mínimo, horario de entrega, descuentos por volumen" /></Field></div>
+          <SitePicker value={f.siteIds || []} onChange={(v) => setF((x) => ({ ...x, siteIds: v }))} label="Le surte a" hint="Sin elegir ninguna, el proveedor aparece en todas las sucursales." />
         </div>
         {error && <div className="alert bad">{error}</div>}
       </form>
@@ -77,6 +78,7 @@ const SupplierModal = ({ initial, onClose, onSaved }) => {
 const SupplierDetail = ({ id, onClose, onEdit, onDeleted, toast }) => {
   const [d, setD] = useState(null)
   const [tab, setTab] = useState('compras')
+  const sites = useSites()
   useEffect(() => { api.get(`/proveedores/${id}`).then(({ data }) => setD(data)).catch((e) => { toast(errorMessage(e), 'bad'); onClose() }) }, [id, toast, onClose])
   const del = async () => {
     if (!window.confirm(`¿Eliminar el proveedor ${d.name}?`)) return // eslint-disable-line no-alert
@@ -105,6 +107,7 @@ const SupplierDetail = ({ id, onClose, onEdit, onDeleted, toast }) => {
             {d.email && <li><MdEmail /> <a href={`mailto:${d.email}`}>{d.email}</a></li>}
             {(d.address || d.city) && <li><MdPlace /> {[d.address, d.city].filter(Boolean).join(', ')}</li>}
             {d.bankAccount && <li><MdAccountBalance /> {d.bankName} · {d.bankAccountType === 'corriente' ? 'Corriente' : 'Ahorros'} {d.bankAccount}</li>}
+            {sites.length > 1 && <li><MdPlace /> {siteNamesOf(sites, d.siteIds)}</li>}
             {d.deliveryDays.length > 0 && <li><MdLocalShipping /> Visita: {d.deliveryDays.map((x) => DAYS[x]).join(', ')}</li>}
           </ul>
         </div>
@@ -159,6 +162,7 @@ const SupplierDetail = ({ id, onClose, onEdit, onDeleted, toast }) => {
 
 const SuppliersPage = () => {
   const [data, setData] = useState(null)
+  const sites = useSites()
   const [q, setQ] = useState('')
   const [cat, setCat] = useState('')
   const [showInactive, setShowInactive] = useState(false)
@@ -201,7 +205,7 @@ const SuppliersPage = () => {
             <thead><tr><th>Proveedor</th><th>Contacto</th><th>Pago</th><th className="num">Productos</th><th className="num">Compras 90 días</th><th>Última compra</th><th /></tr></thead>
             <tbody>{rows.map((s) => (
               <tr key={s.id} onClick={() => setView(s.id)} className={s.active ? '' : 'voided'}>
-                <td><strong>{s.name}</strong><small className="block muted">{[s.docNumber && `${s.docType} ${s.docNumber}`, s.categoryLabel].filter(Boolean).join(' · ')}</small></td>
+                <td><strong>{s.name}</strong><small className="block muted">{[s.docNumber && `${s.docType} ${s.docNumber}`, s.categoryLabel, sites.length > 1 && s.siteIds?.length > 0 && `solo en ${siteNamesOf(sites, s.siteIds)}`].filter(Boolean).join(' · ')}</small></td>
                 <td><small>{s.contactName || '—'}</small>{(s.whatsapp || s.phone) && <small className="block muted">{s.whatsapp || s.phone}</small>}</td>
                 <td><small>{termsLabel(s.paymentTerms)}</small></td>
                 <td className="num">{s.products}</td>

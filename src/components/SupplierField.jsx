@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { MdAdd } from 'react-icons/md'
-import api, { errorMessage } from '../api/client'
+import api, { errorMessage, getSiteFilter } from '../api/client'
 import { useAuth } from '../context/AuthContext'
 import { Field, Modal, Spinner } from './ui'
 
@@ -51,13 +51,16 @@ export const QuickSupplierModal = ({ initialName = '', onClose, onSaved }) => {
 
 // Selector de proveedor. value: { supplierId, supplier }. allowFree: permite escribir un nombre sin registrarlo
 // (ej. "tienda de la esquina" en un gasto de caja).
-const SupplierField = ({ id = 'supplier', label = 'Proveedor', value, onChange, allowFree = false, hint, placeholder = 'Sin proveedor' }) => {
+// TD-025: solo los proveedores de la sucursal (siteId, o la elegida arriba, o la del empleado) y los de todas.
+const SupplierField = ({ id = 'supplier', label = 'Proveedor', value, onChange, allowFree = false, hint, placeholder = 'Sin proveedor', siteId = null }) => {
   const { user } = useAuth()
+  const site = Number(siteId) || getSiteFilter() || user?.siteId || null
   const admin = ['superadmin', 'admin'].includes(user?.role)
   const [list, setList] = useState(null)
   const [free, setFree] = useState(Boolean(!value?.supplierId && value?.supplier))
   const [modal, setModal] = useState(false)
-  useEffect(() => { loadSuppliers().then((d) => setList(d.rows)).catch(() => setList([])) }, [])
+  const forSite = (rows) => (rows || []).filter((s) => !site || !s.siteIds?.length || s.siteIds.includes(site) || s.id === Number(value?.supplierId))
+  useEffect(() => { loadSuppliers().then((d) => setList(forSite(d.rows))).catch(() => setList([])) }, [site]) // eslint-disable-line react-hooks/exhaustive-deps
   const pick = (e) => {
     const v = e.target.value
     if (v === '__free') { setFree(true); onChange({ supplierId: null, supplier: '' }); return }
@@ -78,7 +81,7 @@ const SupplierField = ({ id = 'supplier', label = 'Proveedor', value, onChange, 
         </select>
         {free && <input aria-label={`${label}: nombre`} value={value?.supplier || ''} onChange={(e) => onChange({ supplierId: null, supplier: e.target.value })} placeholder="Ej. tienda de la esquina" autoFocus />}
       </div>
-      {modal && <QuickSupplierModal initialName={free ? value?.supplier : ''} onClose={() => setModal(false)} onSaved={(s) => { setModal(false); setFree(false); loadSuppliers().then((d) => setList(d.rows)); onChange({ supplierId: s.id, supplier: s.name }) }} />}
+      {modal && <QuickSupplierModal initialName={free ? value?.supplier : ''} onClose={() => setModal(false)} onSaved={(s) => { setModal(false); setFree(false); loadSuppliers().then((d) => setList(forSite(d.rows))); onChange({ supplierId: s.id, supplier: s.name }) }} />}
     </Field>
   )
 }
