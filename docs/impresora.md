@@ -20,4 +20,4 @@ La impresora es de cada computador: se configura en **Operación → Impresora**
 
 ## Tiquete
 
-`src/utils/ticket.js` arma la precuenta, el tiquete de cobro y los tiquetes por persona como bloques; `src/utils/printer.js` los pinta en HTML o ESC/POS (página de códigos PC850 para tildes y ñ, corte de papel y apertura del cajón monedero al cobrar en efectivo). Con *Imprimir automáticamente al cobrar*, el tiquete sale solo al terminar el cobro. Si la térmica falla, el aviso ofrece imprimirlo por el navegador.
+`src/utils/ticket.js` arma la precuenta, el tiquete de cobro y los tiquetes por persona como bloques; `src/utils/printer.js` los pinta en HTML o ESC/POS (página de códigos PC850 para tildes y ñ, corte de papel y apertura del cajón monedero al cobrar en efectivo). Con *Imprimir automáticamente al cobrar*, el tiquete sale solo al terminar el cobro. Al presionar *Cobrar* sin haber impreso la precuenta se pregunta si se imprime primero la cuenta para llevársela al cliente (se puede apagar por computador). Si la térmica falla, el aviso ofrece imprimirlo por el navegador.

@@ -166,6 +166,7 @@ const PrinterPage = () => {
               </Field>
             )}
             <div className="stack" style={{ gap: 8 }}>
+              <label className="check"><input type="checkbox" checked={cfg.askBeforeCharge !== false} onChange={set('askBeforeCharge')} /> Al presionar Cobrar, preguntar si se imprime primero la cuenta para el cliente</label>
               <label className="check"><input type="checkbox" checked={cfg.autoPrint} onChange={set('autoPrint')} /> Imprimir el tiquete automáticamente al cobrar</label>
               {agentMode && <label className="check"><input type="checkbox" checked={cfg.cut !== false} onChange={set('cut')} /> Cortar el papel al terminar</label>}
               {agentMode && <label className="check"><input type="checkbox" checked={cfg.openDrawer} onChange={set('openDrawer')} /> Abrir el cajón monedero al cobrar en efectivo</label>}
