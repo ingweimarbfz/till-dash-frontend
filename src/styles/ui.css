@@ -1693,3 +1693,8 @@ tr.row-expired td { background: var(--bad-50); }
 .order-totals .pay-note > span { white-space: nowrap; }
 .order-totals .pay-note .text-ok, .order-totals .pay-note .text-warn, .order-totals .pay-note .text-bad { font-weight: 600; }
 .order-totals .pay-line .text-ok { color: var(--ok); }
+
+/* Bonificación al mejor calificado: "+ 20 %" con el signo y el % fuera del número */
+.input-prefix.bonus-pct { width: 120px; flex: none; }
+.input-prefix.bonus-pct input { padding-left: 28px; padding-right: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.input-prefix.bonus-pct > i { position: absolute; right: 12px; font-style: normal; color: var(--muted); font-weight: 600; pointer-events: none; }
