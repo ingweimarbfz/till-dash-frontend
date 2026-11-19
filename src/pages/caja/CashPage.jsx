@@ -187,7 +187,7 @@ const CloseModal = ({ session, summary, admin, onClose, onDone }) => {
           <h4><span>2</span> Pagos al personal</h4>
           <div className="alert info tip-later">
             <MdVolunteerActivism aria-hidden="true" />
-            <span>Los clientes dejaron <strong>{formatMoney(summary.tips)}</strong> de propina en este turno. Las propinas ya no se pagan al cerrar: quedan acumuladas y se pagan cuando se quiera en <Link to="/propinas">Pagos al personal</Link>.</span>
+            <span>Los clientes dejaron <strong>{formatMoney(summary.tips)}</strong> de propina en este turno. Las propinas quedan acumuladas y se pagan en el transcurso de los días desde <Link to="/propinas">Pagos al personal</Link>.</span>
           </div>
           {cour?.rows.length > 0 && (
             <div className="courier-close">
