@@ -9,6 +9,7 @@ import { PromoTag, promoValue, timeLeft, whenText } from './promotions'
 import { AREAS, fmtQty, MovementModal, UNITS, useWarehouses } from './common'
 import { ProductForm } from './ProductsPage'
 import { notifyStock } from '../../components/StockAlerts'
+import { LotsCard } from './ExpiryTab'
 
 const ADMIN = ['superadmin', 'admin']
 
@@ -104,6 +105,7 @@ const ProductDetail = () => {
           )}
         </Card>
       </div>
+      {p.trackStock && <LotsCard lots={p.lots} unit={p.unit} windowDays={p.expiryWindowDays ?? 15} />}
       {p.trackStock && (
         <Card title="Últimos movimientos" icon={<MdSwapVert />} flush>
           {!p.movements.length ? <Empty>Sin movimientos todavía.</Empty> : (

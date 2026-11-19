@@ -163,6 +163,7 @@ const Dashboard = () => {
           <Kpi label="Cajas abiertas" value={k.openSessions} icon={MdPointOfSale} />
           <Kpi label="Por cobrar" value={formatMoney(k.receivables)} icon={MdRequestQuote} />
           <Kpi label="Stock bajo / agotados" value={`${k.lowStock} / ${k.outOfStock}`} icon={MdWarningAmber} tone={k.outOfStock ? 'bad' : k.lowStock ? 'warn' : ''} />
+          {data.expiry && data.expiry.summary.trackedLots > 0 && <Link to="/inventario?tab=vencimientos" className="kpi-link"><Kpi label="Vencidos / por vencer" value={`${data.expiry.summary.expired.lots} / ${data.expiry.summary.urgent.lots + data.expiry.summary.soon.lots}`} note={`Aviso ${data.expiry.windowDays} días antes`} icon={MdHourglassTop} tone={data.expiry.summary.expired.lots ? 'bad' : data.expiry.summary.urgent.lots ? 'warn' : ''} /></Link>}
         </div>
         {data.money && (
           <div className="kpis">
@@ -224,6 +225,18 @@ const Dashboard = () => {
                 </li>
               ))}</ol>
             )}
+          </Card>
+        )}
+        {data.expiry && data.expiry.rows.length > 0 && (
+          <Card title="Productos próximos a vencer" subtitle={`${data.expiry.summary.expired.lots} vencido(s) · ${data.expiry.summary.urgent.lots} vencen en 3 días o menos · ${data.expiry.summary.soon.lots} en ${data.expiry.windowDays} días`} icon={<MdHourglassTop />} actions={<Link to="/inventario?tab=vencimientos" className="btn btn-sm">Ver vencimientos</Link>} flush>
+            <ul className="list padded">
+              {data.expiry.rows.map((r) => (
+                <li key={r.id}>
+                  <span><Link to={`/productos/${r.product?.id}`}><strong>{r.product?.name}</strong></Link> <small>{r.warehouse?.name} · {Number(r.quantity).toLocaleString('es-CO')} {r.product?.unit} · {r.advice.text}</small></span>
+                  <Badge tone={r.status === 'vencido' ? 'bad' : r.status === 'urgente' ? 'warn' : 'brand'}>{r.days < 0 ? 'Vencido' : r.days === 0 ? 'Vence hoy' : `Vence en ${r.days} d`}</Badge>
+                </li>
+              ))}
+            </ul>
           </Card>
         )}
         {data.alerts?.length > 0 && (

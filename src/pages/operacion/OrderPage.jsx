@@ -88,8 +88,12 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
 
   const shown = useMemo(() => {
     const f = q.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-    return products.filter((p) => (cat === 'all' || p.categoryId === Number(cat)) && (!f || `${p.name} ${p.sku || ''}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(f)))
+    const list = products.filter((p) => (cat === 'all' || (cat === 'vence' ? p.expiry?.expiresOn : p.categoryId === Number(cat))) && (!f || `${p.name} ${p.sku || ''}`.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').includes(f)))
+    // TD-016: lo que vence pronto sale primero para recomendarlo.
+    const soon = (p) => (p.expiry?.expiresOn ? p.expiry.days : Infinity)
+    return [...list].sort((a, b) => soon(a) - soon(b))
   }, [products, cat, q])
+  const expiring = products.filter((p) => p.expiry?.expiresOn).length
 
   // Un toque suma a la línea cobrada del producto; las líneas de cortesía quedan aparte.
   const add = (p) => setCart((c) => { const i = c.findIndex((x) => x.product.id === p.id && !x.note && !x.courtesy); return i >= 0 ? c.map((x, j) => (j === i ? { ...x, quantity: x.quantity + 1 } : x)) : [...c, { product: p, quantity: 1, note: '' }] })
@@ -156,6 +160,7 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
               <div className="input-icon"><MdSearch /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar producto o código" aria-label="Buscar producto" /></div>
               <div className="chip-list scroll-x">
                 <button type="button" className={`pchip${cat === 'all' ? ' on' : ''}`} onClick={() => setCat('all')}>Todo</button>
+                {expiring > 0 && <button type="button" className={`pchip${cat === 'vence' ? ' on' : ''}`} onClick={() => setCat('vence')} title="Productos que vencen pronto: recomiéndalos">⏳ Por vencer ({expiring})</button>}
                 {categories.map((c) => <button key={c.id} type="button" className={`pchip${cat === String(c.id) ? ' on' : ''}`} onClick={() => setCat(String(c.id))}>{c.emoji} {c.name}</button>)}
               </div>
             </div>
@@ -166,6 +171,8 @@ export const OrderView = ({ id, embedded = false, onClose, onChanged }) => {
                   <strong>{p.name}</strong>
                   <span className="prod-price">{p.promo ? <><s>{formatMoney(p.price)}</s> <b style={{ color: p.promo.color }}>{formatMoney(p.finalPrice)}</b></> : formatMoney(p.price)}</span>
                   {p.promo && <span className="prod-promo" style={{ background: p.promo.color }}>{p.promo.emoji} {p.promo.tag || p.promo.name}</span>}
+                  {/* TD-016: lo que vence pronto se recomienda al cliente (y se vende primero el lote que vence antes). */}
+                  {p.expiry?.expiresOn && <span className={`prod-expiry ${p.expiry.status}`} title={`Lote más próximo: vence el ${p.expiry.expiresOn.split('-').reverse().join('/')}`}>⏳ Recomiéndalo · {p.expiry.days === 0 ? 'vence hoy' : `${p.expiry.days} d`}</span>}
                 </button>
               ))}
               {!shown.length && <Empty>No hay productos con ese filtro.</Empty>}
