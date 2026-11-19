@@ -14,6 +14,7 @@ import StockAlerts from '../components/StockAlerts'
 import TableCalls from '../components/TableCalls'
 import CourierCashAlerts from '../components/CourierCashAlerts'
 import PrintNotices from '../components/PrintNotices'
+import { useMenuBadges, NavBadge, BADGE_HINTS } from '../components/MenuBadges'
 
 // Fecha corta: "Lun, 16 Nov 2026".
 const todayLabel = (() => {
@@ -105,6 +106,10 @@ const AppLayout = () => {
   const plan = usePlan()
   const sections = navFor(user.role, user.positions, plan.has)
   const { section, title } = titleFor(user.role, pathname, user.positions)
+  // TD-023: burbujas con lo que espera atención (comandas nuevas, solicitudes, incidentes…).
+  const badges = useMenuBadges(user.role !== 'cliente', `${site || 'all'}`)
+  const visible = new Set(sections.flatMap((s) => s.items.map((i) => i.to)))
+  const pendingTotal = Object.entries(badges).reduce((n, [to, v]) => n + (visible.has(to) ? v : 0), 0)
 
   return (
     <div className={`app${collapsed ? ' sidebar-off' : ''}`}>
@@ -140,8 +145,8 @@ const AppLayout = () => {
                   </span>
                   )
                 : (
-                  <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`}>
-                    <i.icon /> <span className="nav-label">{i.label}</span>
+                  <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => `nav-link${isActive ? ' active' : ''}`} title={badges[i.to] ? `${badges[i.to]} ${BADGE_HINTS[i.to]}` : undefined}>
+                    <i.icon /> <span className="nav-label">{i.label}</span> <NavBadge value={badges[i.to]} />
                   </NavLink>
                   )))}
             </div>
@@ -170,7 +175,7 @@ const AppLayout = () => {
       <div className="main">
         <div className="topbar-wrap">
           <header className="topbar">
-            <button type="button" className="btn btn-ghost btn-icon menu-toggle" onClick={toggleMenu} aria-label="Menú" title={collapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'}><MdMenu /></button>
+            <button type="button" className="btn btn-ghost btn-icon menu-toggle" onClick={toggleMenu} aria-label="Menú" title={collapsed ? 'Mostrar menú lateral' : 'Ocultar menú lateral'}><MdMenu />{pendingTotal > 0 && <span className={`menu-toggle-dot${collapsed ? '' : ' show-md'}`} aria-label={`${pendingTotal} avisos pendientes en el menú`}>{pendingTotal > 99 ? '99+' : pendingTotal}</span>}</button>
             <div className="topbar-title">
               <small>{settings.businessName}{section && section !== 'General' ? ` · ${section}` : ''}</small>
               <strong>{title || 'TillDash+'}</strong>
