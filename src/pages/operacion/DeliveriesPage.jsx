@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsBike, MdRefresh, MdUndo, MdAccountBalanceWallet, MdPayments } from 'react-icons/md'
+import { MdDeliveryDining, MdMap, MdPhone, MdPlace, MdCheckCircle, MdDirectionsBike, MdRefresh, MdUndo, MdAccountBalanceWallet, MdPayments, MdPersonAdd } from 'react-icons/md'
 import api, { errorMessage } from '../../api/client'
 import { Badge, Card, Empty, Field, Kpi, Modal, PageHead, Spinner, useToast } from '../../components/ui'
 import { MoneyInput } from '../../components/forms'
@@ -10,6 +10,7 @@ import { since, useCan } from './common'
 import { FloatsCard } from './CourierFloats'
 import { useAuth } from '../../context/AuthContext'
 import { OpenOrderModal } from './tableModals'
+import { QuickCourierModal, courierText } from './courierFields'
 
 const TONE = { por_despachar: 'warn', en_camino: 'brand', entregado: 'ok' }
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
@@ -29,14 +30,16 @@ const payText = (d) => (!d.payMethod ? null : d.payMethod === 'efectivo' ? `💵
 // TD-012: el domicilio lo entrega solo el domiciliario asignado (o el domiciliario que lo toma si no tiene).
 const isCourier = (user) => user?.role === 'empleado' && (user.positions || []).includes('domiciliario')
 const deliversIt = (user, courier) => isCourier(user) && (!courier || courier.id === user.id)
+// TD-022: el domiciliario externo puede no usar la app; sus entregas también las marca el personal.
+const staffDelivers = (user, courier) => Boolean(courier?.external) && !isCourier(user)
 // Acciones de un domicilio según su estado y quién lo mira.
 const deliveryActions = ({ user, status, courier, mustPayFirst, dispatchBlock }) => {
-  const mine = deliversIt(user, courier)
+  const mine = deliversIt(user, courier) || staffDelivers(user, courier)
   if (status === 'por_despachar') {
     if (mustPayFirst) return { payFirst: true }
     if (dispatchBlock) return { blocked: dispatchBlock }
     if (!courier && !mine) return { blocked: 'Asígnale un domiciliario para despacharlo.' }
-    return { next: { status: 'en_camino', label: mine ? 'Salí con el pedido' : 'Salió con el pedido', icon: <MdDirectionsBike /> } }
+    return { next: { status: 'en_camino', label: isCourier(user) ? 'Salí con el pedido' : 'Salió con el pedido', icon: <MdDirectionsBike /> } }
   }
   if (status === 'en_camino') {
     return { next: mine ? { status: 'entregado', label: 'Entregado', icon: <MdCheckCircle /> } : null, waiting: mine ? null : `Lo marca entregado ${courier?.name || 'el domiciliario'}.`, undo: 'por_despachar' }
@@ -100,7 +103,8 @@ const useDeliveryAction = (load) => {
   const onAction = async (d, body) => {
     setBusy(true)
     try {
-      if (body.cash === 'done') toast(cashToast(d, 'report', body.result))
+      if (body.quick) toast(`${body.quick.name} registrado${body.quick.assigned ? ` y asignado al ${body.quick.assigned}` : ''}. Usuario: ${body.quick.username} (contraseña: ${body.quick.password})`)
+      else if (body.cash === 'done') toast(cashToast(d, 'report', body.result))
       else if (body.cash === 'undo') { await api.post(`/domicilios/${d.id}/dinero-recibido/deshacer`); toast(cashToast(d, 'undo')) } else if ('courierId' in body) { await api.post(`/domicilios/${d.id}/asignar`, body); toast('Domiciliario asignado') } else { await api.post(`/domicilios/${d.id}/estado`, body); toast(body.status === 'entregado' ? `${d.number} entregado` : body.status === 'en_camino' ? `${d.number} en camino` : 'Estado actualizado') }
       load()
     } catch (err) { toast(errorMessage(err), 'bad') } finally { setBusy(false) }
@@ -116,8 +120,10 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
   const act = deliveryActions({ user, status: d.deliveryStatus, courier: d.courier, mustPayFirst: d.mustPayFirst, dispatchBlock: d.dispatchBlock })
   const cash = cashState({ user, courier: d.courier, status: d.deliveryStatus, cashPay: d.cashPay, paid: d.paid, cashReceivedAt: d.cashReceivedAt, ...rxFigures(d.total, d.deliveryFee, d.cashReceivedFee, d.cashReceivedAmount) })
   const [paying, setPaying] = useState(false)
+  const [quick, setQuick] = useState(false)
   return (
     <li className={`delivery-card st-${d.deliveryStatus}`}>
+      {quick && <QuickCourierModal order={d} onClose={() => setQuick(false)} onDone={(c) => { setQuick(false); onAction(d, { quick: c }) }} />}
       {paying && <CashReceivedModal d={d} onClose={() => setPaying(false)} onDone={(r) => { setPaying(false); onAction(d, { cash: 'done', result: r }) }} />}
       <div className="row-between">
         <span><Link to={`/pedidos/${d.id}`}><strong>{d.number}</strong></Link> <Badge tone={TONE[d.deliveryStatus]}>{d.deliveryStatusLabel}</Badge></span>
@@ -128,6 +134,7 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
         {d.customerPhone && <a href={`tel:${d.customerPhone}`} className="btn btn-sm btn-ghost"><MdPhone /> {d.customerPhone}</a>}
       </div>
       <a className="delivery-address" href={mapUrl(d.address, city)} target="_blank" rel="noreferrer"><MdPlace /> <span>{d.address}{city ? <small className="muted"> · {city}</small> : null}</span></a>
+      {d.courier && (data.mine || d.courier.external || d.courier.vehicle) && <small className="muted">🛵 {data.mine ? d.courier.vehicle || 'Sin vehículo registrado' : courierText(d.courier)}</small>}
       {d.note && <small className="muted">📝 {d.note}</small>}
       {payText(d) && <small className={d.mustPayFirst ? 'text-warn' : 'muted'}><b>{payText(d)}</b></small>}
       {d.items.length > 0 && <small className="muted delivery-items">{d.items.map((i) => `${i.quantity} ${i.name}`).join(' · ')}</small>}
@@ -138,10 +145,11 @@ const DeliveryCard = ({ d, data, onAction, busy }) => {
       </div>
       <div className="row wrap" style={{ gap: 8 }}>
         {!data.mine && (
-          <select value={d.courier?.id ?? ''} onChange={(e) => e.target.value && onAction(d, { courierId: Number(e.target.value) })} aria-label={`Domiciliario de ${d.number}`} disabled={busy || (Boolean(d.courier) && d.deliveryStatus !== 'por_despachar')}>
+          <select value={d.courier?.id ?? ''} onChange={(e) => { const v = e.target.value; if (v === 'nuevo') setQuick(true); else if (v) onAction(d, { courierId: Number(v) }) }} aria-label={`Domiciliario de ${d.number}`} disabled={busy || (Boolean(d.courier) && d.deliveryStatus !== 'por_despachar')}>
             {!d.courier && <option value="" disabled>Elige el domiciliario</option>}
-            {data.couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-            {d.courier && !data.couriers.some((c) => c.id === d.courier.id) && <option value={d.courier.id}>{d.courier.name}</option>}
+            {data.couriers.map((c) => <option key={c.id} value={c.id}>{courierText(c)}</option>)}
+            {d.courier && !data.couriers.some((c) => c.id === d.courier.id) && <option value={d.courier.id}>{courierText(d.courier)}</option>}
+            <option value="nuevo">+ Registrar domiciliario externo…</option>
           </select>
         )}
         <span className="grow" />
@@ -176,6 +184,7 @@ const DayTab = ({ onPickCourier }) => {
   }, [day, courier])
   useEffect(() => { load(); const t = setInterval(load, 30000); return () => clearInterval(t) }, [load])
   const { onAction, busy, toastNode } = useDeliveryAction(load)
+  const [quick, setQuick] = useState(false)
   if (error) return <div className="alert bad">{error}</div>
   if (!data) return <div className="splash" style={{ minHeight: 200 }}><Spinner /></div>
   const t = data.totals
@@ -203,15 +212,17 @@ const DayTab = ({ onPickCourier }) => {
   return (
     <div className="stack">
       {toastNode}
+      {quick && <QuickCourierModal onClose={() => setQuick(false)} onDone={(c) => { setQuick(false); onAction({}, { quick: c }) }} />}
       <div className="row wrap" style={{ gap: 10, alignItems: 'flex-end' }}>
         <Field label="Día" htmlFor="dd"><input id="dd" type="date" value={day} max={today()} onChange={(e) => setDay(e.target.value || today())} /></Field>
         {!data.mine && (
-          <Field label="Domiciliario" htmlFor="dc"><select id="dc" value={courier} onChange={(e) => setCourier(e.target.value)}><option value="">Todos</option>{data.couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+          <Field label="Domiciliario" htmlFor="dc"><select id="dc" value={courier} onChange={(e) => setCourier(e.target.value)}><option value="">Todos</option>{data.couriers.map((c) => <option key={c.id} value={c.id}>{courierText(c)}</option>)}</select></Field>
         )}
         {zones.length > 0 && (
           <Field label="Zona" htmlFor="dz"><select id="dz" value={zone} onChange={(e) => setZone(e.target.value)}><option value="">Todas</option>{zones.map((z) => <option key={z} value={z}>{z}</option>)}</select></Field>
         )}
         <span className="grow" />
+        {!data.mine && can('mesero', 'cajero', 'host', 'bartender', 'barista') && <button type="button" className="btn" onClick={() => setQuick(true)}><MdPersonAdd /> Domiciliario externo</button>}
         <button type="button" className="btn" onClick={load}><MdRefresh /> Actualizar</button>
         {stops.length > 0 && <a className="btn btn-primary" href={routeUrl(data.origin, stops)} target="_blank" rel="noreferrer"><MdMap /> Ruta con {stops.length > 10 ? 'las primeras 10' : `${stops.length}`} parada{stops.length === 1 ? '' : 's'}</a>}
       </div>
@@ -374,7 +385,7 @@ export const DeliveryBox = ({ order, canAssign, onChanged }) => {
         {canAssign ? (
           <Field label="Domiciliario" htmlFor="dbx"><select id="dbx" value={order.courier?.id ?? ''} disabled={busy || (Boolean(order.courier) && st !== 'por_despachar')} onChange={(e) => e.target.value && act(`/domicilios/${order.id}/asignar`, { courierId: Number(e.target.value) }, 'Domiciliario actualizado')}>
             {!order.courier && <option value="" disabled>Elige el domiciliario</option>}
-            {couriers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {couriers.map((c) => <option key={c.id} value={c.id}>{courierText(c)}</option>)}
             {order.courier && !couriers.some((c) => c.id === order.courier.id) && <option value={order.courier.id}>{order.courier.name}</option>}
           </select></Field>
         ) : <span>Domiciliario: <strong>{order.courier?.name || 'sin asignar'}</strong></span>}
